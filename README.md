@@ -1,6 +1,5 @@
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18864189.svg)](https://doi.org/10.5281/zenodo.18864189)
 # mkgraticule_planet
-
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18864189.svg)](https://doi.org/10.5281/zenodo.18864189)
 Create planetary graticules for **IAU coordinate systems** and export them as **GeoPackage**.
 
 A small CLI utility for generating latitude/longitude grids for planetary bodies using **IAU 2015 planetary coordinate systems**.
@@ -91,4 +90,5 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
+
 
