@@ -10,7 +10,7 @@ A small CLI utility for generating latitude/longitude grids for planetary bodies
 * GeoPackage output
 * Compatible with **GDAL 3.x**
 * Multiple graticule label styles
-* QGIS-friendly output suitable for map production: label fields allow immediate graticule labeling, and CRS metadata (`definition_12_063`) ensures that IAU coordinate systems are correctly recognized when the GeoPackage is loaded.
+* QGIS-friendly output suitable for map production: label fields allow immediate graticule labeling, and CRS metadata ([`definition_12_063`](https://www.geopackage.org/spec/#gpkg_spatial_ref_sys_cols_crs_wkt)) ensures that IAU coordinate systems are correctly recognized when the GeoPackage is loaded.
 
 Latitude labels:
 
@@ -39,12 +39,17 @@ Basic example:
 
 ```sh
 # Moon
-python mkgraticule_planet.py \
-  -g 10 10 \
-  -r 0.2 0.2 \
-  -srs IAU_2015:30100 \
-  -e -180 90 180 -90 \
-  moon_graticule.gpkg
+python mkgraticule_planet.py -g 10 10 \
+                             -r 0.2 0.2 \
+                             -srs IAU_2015:30100 \
+                             -e -180 90 180 -90 \
+                             moon_graticule.gpkg
+
+# Mars
+python mkgraticule_planet.py -g 15 15 \
+                             -r 0.5 0.5 \
+                             -srs IAU_2015:49900 \
+                             mars_graticule.gpkg
 ```
 
 ## Planetary CRS
@@ -90,6 +95,7 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
+
 
 
 
