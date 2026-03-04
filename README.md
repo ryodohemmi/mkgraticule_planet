@@ -1,3 +1,4 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18864189.svg)](https://doi.org/10.5281/zenodo.18864189)
 # mkgraticule_planet
 
 Create planetary graticules for **IAU coordinate systems** and export them as **GeoPackage**.
@@ -80,6 +81,14 @@ This project is based on the GDAL sample script:
 
 https://github.com/OSGeo/gdal/blob/master/swig/python/gdal-utils/osgeo_utils/samples/mkgraticule.py
 
+## Citation
+
+If you use this software in your research, please cite:
+
+Hemmi, R. (2026). *mkgraticule_planet*. Zenodo.  
+https://doi.org/10.5281/zenodo.18864189
+
 ## License
 
 MIT License. See the LICENSE file for details.
+
