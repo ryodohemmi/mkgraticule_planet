@@ -106,11 +106,11 @@ Example codes:
 - `IAU_2015:49900` — Mars
 - `IAU_2015:40100` — Phobos
 
-## Example (QGIS)
+## QGIS Examples
 
-### Phobos example (major/minor classification)
+### Phobos example (with major/minor classification)
 
-Example global graticule generated for **Phobos** using major/minor classification.
+Example global graticule for **Phobos**, generated using major/minor classification.
 
 Command:
 
@@ -120,13 +120,14 @@ python mkgraticule_planet.py -srs IAU_2015:40100 -g 10 10 phobos_grid10x10 -m 30
 
 ![Phobos graticule example](docs/phobos_graticule_example.png)
 
-### QGIS example: Moon south polar stereographic
+### Moon south polar stereographic example
 
 Example graticule generated for the **Moon south polar stereographic projection**  
 (`IAU_2015:30135`).
 
 Because polar stereographic projections have a **limited valid domain**,  
-the geographic extent is restricted to the south polar region.
+the geographic extent is restricted to the south polar region.  
+The `-ndd` option is used to remove the duplicate dateline meridian.
 
 Command:
 
@@ -170,3 +171,4 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
+
