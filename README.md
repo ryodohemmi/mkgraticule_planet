@@ -106,7 +106,7 @@ Example codes:
 - `IAU_2015:49900` — Mars
 - `IAU_2015:40100` — Phobos
 
-## QGIS Examples
+## QGIS examples
 
 ### Phobos example (with major/minor classification)
 
@@ -115,7 +115,9 @@ Example global graticule for **Phobos**, generated using major/minor classificat
 Command:
 
 ```sh
-python mkgraticule_planet.py -srs IAU_2015:40100 -g 10 10 phobos_grid10x10 -m 30 30
+python mkgraticule_planet.py -srs IAU_2015:40100 \
+                             -g 10 10 -m 30 30 \
+                             phobos_grid10x10
 ```
 
 ![Phobos graticule example](docs/phobos_graticule_example.png)
@@ -133,8 +135,7 @@ Command:
 
 ```sh
 python mkgraticule_planet.py -srs IAU_2015:30135 \
-                             -g 10 1 \
-                             -m 30 2 \
+                             -g 10 1 -m 30 2 \
                              -e -180 -80 180 -90 -ndd \
                              moon_south_pole_graticule.gpkg
 ```
@@ -171,4 +172,5 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
+
 
