@@ -23,7 +23,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -48,6 +48,7 @@ def get_args():
 
     parser.add_argument("-v", "--version", action="version", version=__version__)
     parser.add_argument("outfile", type=str, help="Set the output filename")
+
     parser.add_argument(
         "-g",
         "--grid",
@@ -65,6 +66,16 @@ def get_args():
         metavar=("xres", "yres"),
         default=[0.1, 0.1],
         help="Set resolution to polygonize grids [xres yres] in degrees",
+    )
+    parser.add_argument(
+        "-m",
+        "--major",
+        type=float,
+        nargs=2,
+        metavar=("xmajor", "ymajor"),
+        default=None,
+        help="Major graticule interval [xmajor ymajor] in degrees. "
+             "If set, grid_type will be 'major' or 'minor'. If omitted, grid_type is NULL.",
     )
     parser.add_argument(
         "-srs",
@@ -90,6 +101,30 @@ def get_args():
         default=None,
         help="Force to override the latitude of origin (center) of the projection specified by -srs",
     )
+
+    parser.add_argument(
+        "-s",
+        "--skipfailures",
+        action="store_true",
+        help="Skip features that fail reprojection (equivalent to GDAL -skipfailures).",
+    )
+
+    parser.add_argument(
+    "-p",
+    "--partial-reprojection",
+    action="store_true",
+    help="Enable partial reprojection (OGR_ENABLE_PARTIAL_REPROJECTION=TRUE). "
+         "May output truncated/split geometries near projection domain limits.",
+    )
+
+    parser.add_argument(
+    "-ndd",
+    "--no-duplicate-dateline",
+    action="store_true",
+    help="Drop the duplicate dateline meridian when the longitude span is ~360 degrees "
+         "(e.g., remove -180 and keep 180). Useful for polar stereographic views.",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -227,6 +262,39 @@ def lon_360_label(lon: float) -> str:
     return f"{_deg_text(v)}°"
 
 
+def _is_multiple(val: float, base: float, eps: float = 1e-9) -> bool:
+    """
+    True if val is (approximately) an integer multiple of base.
+    Handles float steps robustly.
+    """
+    if base is None:
+        return False
+    base = float(base)
+    if abs(base) < eps:
+        return False
+    k = float(val) / base
+    return abs(k - round(k)) < eps
+
+
+def _quiet_gdal_reprojection_domain_errors():
+    def handler(err_class, err_num, msg):
+        # Suppress noisy reprojection-domain errors when skipFailures is enabled.
+        # Still allow other messages through.
+
+        if "Point outside of projection domain" in msg:
+            return
+        if "Failed to reproject feature" in msg:
+            return
+        if "Reprojection failed" in msg:
+            return
+        if "Full reprojection failed" in msg:   # ← これ追加
+            return
+
+        # Fall back: print others
+        sys.stderr.write(f"GDAL[{err_class}:{err_num}] {msg}\n")
+
+    return handler
+
 def main():
     args = get_args()
 
@@ -241,11 +309,11 @@ def main():
     outfile = args.outfile
     if os.path.splitext(outfile)[-1].lower() != ".gpkg":
         outfile += ".gpkg"
-    
+
     outdir = os.path.dirname(outfile)
     if outdir:
         os.makedirs(outdir, exist_ok=True)
-    
+
     drv_out = ogr.GetDriverByName("GPKG")
     if drv_out is None:
         raise RuntimeError("OGR driver 'GPKG' is not available in this GDAL build.")
@@ -258,7 +326,7 @@ def main():
         if os.path.exists(outfile):
             raise RuntimeError(
                 f"Cannot overwrite '{outfile}'. It may be open in QGIS.\n"
-                 "Close QGIS (or remove the layer) and retry."
+                "Close QGIS (or remove the layer) and retry."
             )
 
     print("=" * terminal_width)
@@ -295,15 +363,62 @@ def main():
     xres, yres = args.res
     ulx, uly, lrx, lry = args.extent
 
+    # major interval (optional)
+    if args.major is not None:
+        xmajor, ymajor = args.major
+    else:
+        xmajor = ymajor = None
+
     # Normalize extent (in case user swaps)
     xmin = min(ulx, lrx)
     xmax = max(ulx, lrx)
     ymin = min(lry, uly)
     ymax = max(lry, uly)
 
+    # Warn if projected CRS + near-global extent
+    # Warn/abort if projected CRS + near-global extent
+    if projected:
+        global_like = (
+            xmin <= -170 and xmax >= 170 and
+            ymin <= -80 and ymax >= 80
+        )
+        
+        if global_like and not args.skipfailures:
+            msg = (
+                "Projected CRS with near-global extent detected.\n"
+                "Some projections (e.g., polar stereographic) have limited valid domains, "
+                "so global reprojection may fail.\n"
+                "Restrict the geographic extent with -e (e.g., \"-e -180 -60 180 -90\").\n"
+                "To force output, use -s/--skipfailures. "
+                "Combining -s with -p/--partial-reprojection may allow partially valid geometries to be written."
+            )
+            print("\n" + msg + "\n", file=sys.stderr, flush=True)
+            raise RuntimeError(msg)
+        
+        if global_like and args.skipfailures:
+            print(
+                "\nWARNING: Projected CRS with near-global extent.\n"
+                "Some features may fall outside the projection domain and will be skipped "
+                "because -s/--skipfailures is enabled.\n"
+                "Consider restricting the extent with -e for a complete graticule in the target region (e.g., \"-e -180 -60 180 -90\").\n"
+                "Alternatively, combining -s with -p/--partial-reprojection may allow partially valid geometries to be written.\n",
+                file=sys.stderr,
+            )
+    
     # Latitudes / longitudes sequence
     latitudes = np.arange(ymin, ymax + 1e-12, ystep, dtype=float)
     longitudes = np.arange(xmin, xmax + 1e-12, xstep, dtype=float)
+
+    # Optional: remove duplicate dateline (-180 and 180) for near-global extents
+    if args.no_duplicate_dateline:
+        span = xmax - xmin
+        spans_full_360 = abs(span - 360.0) < 1e-9
+        has_both_ends = (abs(xmin + 180.0) < 1e-9) and (abs(xmax - 180.0) < 1e-9)
+
+        if spans_full_360 and has_both_ends and longitudes.size > 1:
+            # Prefer keeping +180 and dropping -180
+            if abs(longitudes[0] + 180.0) < 1e-9:
+                longitudes = longitudes[1:]
 
     #########################################################################
     # Create Layer in memory (avoid temp Shapefile)
@@ -356,6 +471,9 @@ def main():
     layer.CreateField(ogr.FieldDefn("lon_ew", ogr.OFTString))
     layer.CreateField(ogr.FieldDefn("lon_360", ogr.OFTString))
 
+    # Major/minor (NULL if --major is not used)
+    layer.CreateField(ogr.FieldDefn("grid_type", ogr.OFTString))
+
     #########################################################################
     # Create features: latitude lines
     fid = 0
@@ -376,6 +494,12 @@ def main():
         feat.SetFieldNull("lon_180")
         feat.SetFieldNull("lon_ew")
         feat.SetFieldNull("lon_360")
+
+        # grid_type
+        if ymajor is None:
+            feat.SetFieldNull("grid_type")
+        else:
+            feat.SetField("grid_type", "major" if _is_multiple(lat, ymajor) else "minor")
 
         line.FlattenTo2D()
         feat.SetGeometry(line)
@@ -403,6 +527,12 @@ def main():
         feat.SetField("lon_180", lon_180_label(lon))
         feat.SetField("lon_ew", lon_ew_label(lon))
         feat.SetField("lon_360", lon_360_label(lon))
+
+        # grid_type
+        if xmajor is None:
+            feat.SetFieldNull("grid_type")
+        else:
+            feat.SetField("grid_type", "major" if _is_multiple(lon, xmajor) else "minor")
 
         line.FlattenTo2D()
         feat.SetGeometry(line)
@@ -435,18 +565,67 @@ def main():
             f"{t_srs_i.GetAuthorityName(None)}:{t_srs_i.GetAuthorityCode(None)}\n"
         )
 
-    gdal.VectorTranslate(
-        outfile,
-        ds_mem,
+    vt_opts = gdal.VectorTranslateOptions(
         format="GPKG",
         layerName=layer_name,
-        dstSRS=t_srs_i,  # target CRS (matches -srs)
-        srcSRS=t_srs_geog,  # source CRS (geographic base)
+        dstSRS=t_srs_i,
+        srcSRS=t_srs_geog,
+        datasetCreationOptions=[
+            "ADD_GPKG_OGR_CONTENTS=NO",
+        ],
         layerCreationOptions=[
             "SPATIAL_INDEX=YES",
         ],
+        skipFailures=args.skipfailures,
     )
 
+    # Optional: enable partial reprojection (scoped)
+    prev_partial = None
+    if args.partial_reprojection:
+        prev_partial = gdal.GetConfigOption("OGR_ENABLE_PARTIAL_REPROJECTION")
+        gdal.SetConfigOption("OGR_ENABLE_PARTIAL_REPROJECTION", "TRUE")
+        print(
+            "NOTE: Partial reprojection enabled (-p/--partial-reprojection). "
+            "Geometries may be truncated or split near projection domain limits.",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    # Optional: suppress noisy domain errors when skipfailures is enabled
+    if args.skipfailures:
+        gdal.PushErrorHandler(_quiet_gdal_reprojection_domain_errors())
+
+    try:
+        gdal.VectorTranslate(outfile, ds_mem, options=vt_opts)
+    finally:
+        if args.skipfailures:
+            gdal.PopErrorHandler()
+
+        # Restore partial reprojection config to previous state
+        if args.partial_reprojection:
+            if prev_partial is None:
+                gdal.SetConfigOption("OGR_ENABLE_PARTIAL_REPROJECTION", None)
+            else:
+                gdal.SetConfigOption("OGR_ENABLE_PARTIAL_REPROJECTION", prev_partial)
+
+    # Post-run note for projected + global-like runs
+    if projected and global_like:
+        if args.skipfailures:
+            print(
+                "NOTE: Some graticule lines may be missing because they fell outside the projection domain.",
+                file=sys.stderr,
+                flush=True,
+            )
+        else:
+            # In your current design, this path should normally be blocked earlier (abort),
+            # but keep it harmless if logic changes in the future.
+            print(
+                "NOTE: Reprojection may fail for near-global extents in some projected CRS. "
+                "Use -e to restrict the extent, or -s/--skipfailures.",
+                file=sys.stderr,
+                flush=True,
+            )
+    
     # Add WKT2_2019 into gpkg_spatial_ref_sys.definition_12_063 for srs_id (= authority code)
     # IMPORTANT: the CRS input must match -srs, so use t_srs_i here.
     update_gpkg_spatial_ref_sys_with_wkt2_2019(outfile, t_srs_i)
