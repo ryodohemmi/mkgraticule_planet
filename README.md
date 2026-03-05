@@ -85,7 +85,7 @@ Combining `-s` with `-p` can sometimes produce partial output near projection do
 
 If the longitude span is approximately **360°** (e.g. `-180..180`), both `-180` and `180` meridians can be generated.
 
-To drop the duplicate dateline meridian (remove `-180` and keep `180`):
+To drop the duplicate dateline meridian (remove `-180` and keep `+180`)
 
 ```sh
 python mkgraticule_planet.py ... -ndd
@@ -96,7 +96,7 @@ python mkgraticule_planet.py ... -ndd
 The `-srs` option accepts any coordinate reference system supported by GDAL / PROJ.
 
 Planetary coordinate systems typically follow the **IAU 2015 cartographic coordinate system definitions**.
-Many IAU CRS codes can be browsed at:
+Many IAU CRS definitions can be browsed at:
 
 https://spatialreference.org/
 
@@ -108,7 +108,10 @@ Example codes:
 
 ## Example (QGIS)
 
-### Example graticule generated for **Phobos** using major/minor classification.
+### Phobos example (major/minor classification)
+
+Example global graticule generated for **Phobos** using major/minor classification.
+
 Command:
 
 ```sh
@@ -167,8 +170,3 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
-
-
-
-
-
