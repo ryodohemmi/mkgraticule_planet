@@ -32,6 +32,8 @@ Longitude labels:
 
 Python with GDAL Python bindings.
 
+If you are using the OSGeo4W shell bundled with QGIS, GDAL is usually already available, so `conda install gdal` is not required.
+
 Example installation (conda):
 
 ```sh
