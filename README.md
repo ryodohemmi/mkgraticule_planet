@@ -34,13 +34,16 @@ Python with GDAL Python bindings.
 
 If you are using the OSGeo4W shell bundled with QGIS, GDAL is usually already available, so `conda install gdal` is not required.
 
-Example installation (conda):
+Otherwise, one simple way to install the required GDAL Python bindings is:
 
 ```sh
 conda install gdal
 ```
 
 ## Usage
+Output filenames may be specified either with or without the `.gpkg` extension. If the extension is omitted, it is added automatically.
+
+The `-e` option uses `xmin ymax xmax ymin` order (ullr style) for the geographic extent.
 
 ### Basic example
 
@@ -174,5 +177,6 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
+
 
 
