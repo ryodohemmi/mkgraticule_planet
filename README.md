@@ -43,7 +43,7 @@ conda install gdal
 ## Usage
 Output filenames may be specified either with or without the `.gpkg` extension. If the extension is omitted, it is added automatically.
 
-The `-e` option uses `xmin ymax xmax ymin` order (ullr style) for the geographic extent.
+The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ymin` (ullr style).
 
 ### Basic example
 
@@ -177,6 +177,7 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
+
 
 
 
