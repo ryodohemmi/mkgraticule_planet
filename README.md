@@ -147,6 +147,25 @@ python mkgraticule_planet.py -srs IAU_2015:30135 \
 
 ![Moon graticule example](docs/moon_graticule_example.png)
 
+### Earth Mollweide example
+
+Example global graticule for the **Earth** using the **World Mollweide projection**  
+(`ESRI:54009`).
+
+This example shows that the tool can also be used for non-planetary workflows when a CRS is supported by GDAL / PROJ.
+
+Command:
+
+```sh
+python mkgraticule_planet.py -srs ESRI:54009 \
+                             -g 30 10 \
+                             -m 90 30 \
+                             -e -180 90 180 -90 \
+                             earth_mollweide_graticule.gpkg
+```
+
+![Earth graticule example](docs/earth_graticule_example.png)
+
 ## Output fields
 
 | Field   | Description                     |
@@ -177,6 +196,7 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
+
 
 
 
