@@ -37,7 +37,6 @@ ogr.UseExceptions()
 gdal.UseExceptions()
 
 import os
-import re
 import sys
 import argparse
 import sqlite3
@@ -143,9 +142,6 @@ def export_wkt2_2019(srs: osr.SpatialReference) -> str:
     """
     Equivalent to: gdalsrsinfo -o wkt2_2019 <CRS>
     (The input CRS here must match the CRS provided via -srs)
-
-    ExportToWkt() with format options was introduced in GDAL 3.0.
-    Ref: https://gdal.org/api/python/osgeo.osr.html#osgeo.osr.SpatialReference.ExportToWkt
     """
     try:
         return srs.ExportToWkt(["format=wkt2_2019"])
@@ -479,44 +475,6 @@ def _add_projection_center_point(
     point_layer.CreateFeature(feat)
     feat = None
 
-
-def _make_range(start: float, stop: float, step: float) -> np.ndarray:
-    """
-    Generate an array [start, start+step, start+2*step, ...] up to stop (inclusive).
-
-    Unlike np.arange(), each element is computed as start + i*step rather than
-    accumulated, so floating-point drift does not accumulate across many steps.
-    The stop value is reliably included when the range is evenly divisible by step.
-
-    Parameters
-    ----------
-    start : float
-    stop  : float  (must be >= start)
-    step  : float  (must be > 0)
-
-    Returns
-    -------
-    np.ndarray of float64
-    """
-    n = max(1, round((stop - start) / step) + 1)
-    arr = start + np.arange(n, dtype=float) * step
-    # Trim any values that overshot stop due to floating-point rounding.
-    arr = arr[arr <= stop + abs(step) * 1e-9]
-    return arr
-
-
-def _sanitize_layer_name(name: str) -> str:
-    """
-    Replace characters unsuitable for GeoPackage/SQLite table names with underscores.
-    Ensures the name does not start with a digit.
-    Returns '_layer' if the result would be empty.
-    """
-    sanitized = re.sub(r"[^\w]", "_", name)
-    if sanitized and sanitized[0].isdigit():
-        sanitized = "_" + sanitized
-    return sanitized or "_layer"
-
-
 def main():
     args = get_args()
 
@@ -554,46 +512,16 @@ def main():
     print("=" * terminal_width)
 
     #########################################################################
-    # Grid / extent
-    xstep, ystep = args.grid
-    xres, yres = args.res
-    ulx, uly, lrx, lry = args.extent
-
-    # Validate step and resolution values early to give a clear error message.
-    if xstep <= 0 or ystep <= 0:
-        raise RuntimeError(
-            f"Grid step must be positive (got xstep={xstep}, ystep={ystep})."
-        )
-    if xres <= 0 or yres <= 0:
-        raise RuntimeError(
-            f"Resolution must be positive (got xres={xres}, yres={yres})."
-        )
-
-    if args.major is not None:
-        xmajor, ymajor = args.major
-    else:
-        xmajor = ymajor = None
-
-    xmin = min(ulx, lrx)
-    xmax = max(ulx, lrx)
-    ymin = min(lry, uly)
-    ymax = max(lry, uly)
-
-    #########################################################################
     # Spatial reference
     t_srs = args.srs
     t_srs_i = osr.SpatialReference()
     t_srs_i.SetFromUserInput(t_srs)
 
-    # Force traditional GIS axis order (x=lon, y=lat) for manual transformations.
-    # Ref: https://gdal.org/tutorials/osr_api_tut.html#crs-and-axis-order
+    # Force traditional GIS axis order (x=lon, y=lat) for manual transformations
     if hasattr(osr, "OAMS_TRADITIONAL_GIS_ORDER"):
         t_srs_i.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
 
-    # IsGeographic() returns int (0/1) in older GDAL Python bindings and bool in
-    # newer ones. Evaluating it as a truthiness expression is safe for both cases.
-    # Ref: https://gdal.org/api/python/osgeo.osr.html#osgeo.osr.SpatialReference.IsGeographic
-    if t_srs_i.IsGeographic():
+    if t_srs_i.IsGeographic() == 1:
         projected = False
         proj_type = None
     else:
@@ -614,15 +542,31 @@ def main():
             center_lon = 0.0
 
     # Override latitude_of_origin if -lo is specified.
-    # IMPORTANT: center_lat must be updated AFTER SetProjParm() so that polar
-    # singularity detection and the projection-center label point both use the
-    # overridden value, not the stale value from the original SRS definition.
+    # center_lat is updated immediately after SetProjParm() so that polar
+    # singularity detection and the projection-center label point use the
+    # overridden value, not the stale value read from the original SRS.
     if args.lato is not None and projected:
         try:
             t_srs_i.SetProjParm("latitude_of_origin", float(args.lato))
-            center_lat = float(args.lato)  # keep center_lat in sync with the override
+            center_lat = float(args.lato)
         except Exception as e:
             print(f"WARN: failed to override latitude_of_origin with -lo {args.lato}: {e}")
+
+    #########################################################################
+    # Grid / extent
+    xstep, ystep = args.grid
+    xres, yres = args.res
+    ulx, uly, lrx, lry = args.extent
+
+    if args.major is not None:
+        xmajor, ymajor = args.major
+    else:
+        xmajor = ymajor = None
+
+    xmin = min(ulx, lrx)
+    xmax = max(ulx, lrx)
+    ymin = min(lry, uly)
+    ymax = max(lry, uly)
 
     # Near-global extent check
     global_like = (
@@ -666,12 +610,9 @@ def main():
                 file=sys.stderr,
             )
 
-    # Latitudes / longitudes sequence.
-    # _make_range() is used instead of np.arange() to avoid floating-point
-    # accumulation that can cause the endpoint to be silently dropped when
-    # the range is evenly divisible by the step.
-    latitudes = _make_range(ymin, ymax, ystep)
-    longitudes = _make_range(xmin, xmax, xstep)
+    # Latitudes / longitudes sequence
+    latitudes = np.arange(ymin, ymax + 1e-12, ystep, dtype=float)
+    longitudes = np.arange(xmin, xmax + 1e-12, xstep, dtype=float)
 
     # Optional: remove duplicate endpoint meridian for full 360-degree longitude spans
     if args.no_duplicate_endpoint:
@@ -688,9 +629,7 @@ def main():
 
     #########################################################################
     # Create Layer in memory
-
-    # Sanitize the base filename to produce a valid GeoPackage/SQLite table name.
-    layer_name = _sanitize_layer_name(os.path.splitext(os.path.basename(outfile))[0])
+    layer_name = os.path.splitext(os.path.basename(outfile))[0]
 
     point_layer = None
     point_layer_name = f"{layer_name}_points"
@@ -702,11 +641,9 @@ def main():
         except Exception:
             ct_to_target = None
 
-    # The correct OGR in-memory driver name is "Memory".
-    # Ref: https://gdal.org/drivers/vector/memory.html
-    drv_mem = ogr.GetDriverByName("Memory")
+    drv_mem = ogr.GetDriverByName("MEM") or ogr.GetDriverByName("Memory")
     if drv_mem is None:
-        raise RuntimeError("OGR driver 'Memory' is not available in this GDAL build.")
+        raise RuntimeError("OGR driver 'MEM' is not available in this GDAL build.")
 
     ds_mem = drv_mem.CreateDataSource("mem")
     if ds_mem is None:
@@ -716,10 +653,8 @@ def main():
     if layer is None:
         raise RuntimeError("Failed to create in-memory layer.")
 
-    # Print SRS (geographic base).
-    # Use export_wkt2_2019() which has GDAL version fallbacks.
-    # Ref: https://gdal.org/api/python/osgeo.osr.html#osgeo.osr.SpatialReference.ExportToWkt
-    wkt_string = export_wkt2_2019(t_srs_geog)
+    # Print SRS (geographic base)
+    wkt_string = t_srs_geog.ExportToWkt(["format=wkt2"])
     try:
         import pyproj
         pretty_wkt = pyproj.CRS.from_wkt(wkt_string).to_wkt(pretty=True)
@@ -752,18 +687,12 @@ def main():
     layer.CreateField(ogr.FieldDefn("grid_type", ogr.OFTString))
 
     #########################################################################
-    # Precompute sample coordinate arrays shared across all graticule lines.
-    # These are constant for all latitudes / longitudes, so computing them
-    # once outside the loop avoids repeated redundant allocations.
-    lon_samples = _make_range(xmin, xmax, xres)
-    lat_samples = _make_range(ymin, ymax, yres)
-
-    #########################################################################
     # Create features: latitude lines
     fid = 0
     for i, lat in enumerate(latitudes):
         progress_bar(i, latitudes, "Processing Latitudes: ")
 
+        lon_samples = np.arange(xmin, xmax + 1e-12, xres, dtype=float)
         sample_coords = [(float(lon), float(lat)) for lon in lon_samples]
 
         is_collapsed = False
@@ -851,6 +780,7 @@ def main():
     for i, lon in enumerate(longitudes):
         progress_bar(i, longitudes, "Processing Longitudes: ")
 
+        lat_samples = np.arange(ymin, ymax + 1e-12, yres, dtype=float)
         sample_coords = [(float(lon), float(lat)) for lat in lat_samples]
 
         is_collapsed = False
@@ -920,10 +850,7 @@ def main():
         if center_target_xy is not None:
             point_layer = _ensure_point_layer(ds_mem, point_layer, point_layer_name, t_srs_i)
 
-            # Avoid adding a center point if any existing point already occupies the
-            # same location, regardless of its role.  A "collapsed" parallel or
-            # meridian may coincide exactly with the projection center, so checking
-            # only for role=="center" was insufficient.
+            # Avoid duplicating the exact same point if a collapsed feature already exists there
             duplicate_center = False
             if point_layer.GetFeatureCount() > 0:
                 for feat_existing in point_layer:
@@ -932,8 +859,9 @@ def main():
                         continue
                     x0, y0, _ = geom_existing.GetPoint()
                     if ((x0 - center_target_xy[0]) ** 2 + (y0 - center_target_xy[1]) ** 2) ** 0.5 <= 1e-8:
-                        duplicate_center = True
-                        break
+                        if feat_existing.GetField("point_role") == "center":
+                            duplicate_center = True
+                            break
                 point_layer.ResetReading()
 
             if not duplicate_center:
@@ -955,9 +883,7 @@ def main():
             f"{t_srs_geog.GetAuthorityName(None)}:{t_srs_geog.GetAuthorityCode(None)} "
             f"=> {t_srs_i.GetAuthorityName(None)}:{t_srs_i.GetAuthorityCode(None)}\n"
         )
-        # Use export_wkt2_2019() which has GDAL version fallbacks.
-        # Ref: https://gdal.org/api/python/osgeo.osr.html#osgeo.osr.SpatialReference.ExportToWkt
-        wkt_string2 = export_wkt2_2019(t_srs_i)
+        wkt_string2 = t_srs_i.ExportToWkt(["format=wkt2"])
         try:
             import pyproj
             pretty_wkt2 = pyproj.CRS.from_wkt(wkt_string2).to_wkt(pretty=True)
