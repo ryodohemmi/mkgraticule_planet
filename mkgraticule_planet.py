@@ -23,7 +23,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -121,8 +121,8 @@ def get_args():
         "-ndd",
         "--no-duplicate-dateline",
         action="store_true",
-        help="Drop the duplicate dateline meridian when the longitude span is ~360 degrees "
-             "(e.g., remove -180 and keep 180). Useful for polar stereographic views.",
+        help="When the longitude span is ~360 degrees, drop the duplicate endpoint meridian "
+             "(e.g., keep 180 instead of -180, or keep 360 instead of 0). Useful for global or polar views.",
     )
 
     args = parser.parse_args()
@@ -226,7 +226,7 @@ def _deg_text(x: float) -> str:
     return s
 
 
-def lat_180_label(lat: float) -> str:
+def lat_90_label(lat: float) -> str:
     return f"{_deg_text(lat)}°"
 
 
@@ -244,18 +244,35 @@ def lon_180_label(lon: float) -> str:
 
 
 def lon_ew_label(lon: float) -> str:
-    lon = _norm_zero(lon)
-    if lon > 0:
-        return f"{_deg_text(abs(lon))}°E"
-    if lon < 0:
-        return f"{_deg_text(abs(lon))}°W"
-    return "0°"
+    """
+    Return longitude labels in the range 180°W .. 180°E,
+    regardless of whether input longitudes are given as
+    -180..180 or 0..360.
+    """
+    # Normalize to (-180, 180]
+    v = ((float(lon) + 180.0) % 360.0) - 180.0
+    v = _norm_zero(v)
 
+    # Prefer +180 over -180 for labeling
+    if abs(v + 180.0) < _EPS:
+        v = 180.0
+
+    if v > 0:
+        return f"{_deg_text(abs(v))}°E"
+    if v < 0:
+        return f"{_deg_text(abs(v))}°W"
+    return "0°"
 
 def lon_360_label(lon: float) -> str:
     v = (float(lon) % 360.0 + 360.0) % 360.0
     v = _norm_zero(v)
     return f"{_deg_text(v)}°"
+
+
+def lon_360e_label(lon: float) -> str:
+    v = (float(lon) % 360.0 + 360.0) % 360.0
+    v = _norm_zero(v)
+    return f"{_deg_text(v)}°E"
 
 
 def _is_multiple(val: float, base: float, eps: float = 1e-9) -> bool:
@@ -410,15 +427,18 @@ def main():
     latitudes = np.arange(ymin, ymax + 1e-12, ystep, dtype=float)
     longitudes = np.arange(xmin, xmax + 1e-12, xstep, dtype=float)
 
-    # Optional: remove duplicate dateline (-180 and 180) for near-global extents
+    # Optional: remove duplicate endpoint meridian for full 360-degree longitude spans
     if args.no_duplicate_dateline:
         span = xmax - xmin
         spans_full_360 = abs(span - 360.0) < 1e-9
-        has_both_ends = (abs(xmin + 180.0) < 1e-9) and (abs(xmax - 180.0) < 1e-9)
 
-        if spans_full_360 and has_both_ends and longitudes.size > 1:
-            if abs(longitudes[0] + 180.0) < 1e-9:
-                longitudes = longitudes[1:]
+        if spans_full_360 and longitudes.size > 1:
+            # Drop the last endpoint, keep the first.
+            # Examples:
+            #   -180..180 -> keep -180, drop 180
+            #    0..360   -> keep 0,    drop 360
+            if abs(longitudes[0] - xmin) < 1e-9 and abs(longitudes[-1] - xmax) < 1e-9:
+                longitudes = longitudes[:-1]
 
     #########################################################################
     # Create Layer in memory
@@ -461,11 +481,12 @@ def main():
     field_lon.SetPrecision(3)
     layer.CreateField(field_lon)
 
-    layer.CreateField(ogr.FieldDefn("lat_180", ogr.OFTString))
+    layer.CreateField(ogr.FieldDefn("lat_90", ogr.OFTString))
     layer.CreateField(ogr.FieldDefn("lat_ns", ogr.OFTString))
     layer.CreateField(ogr.FieldDefn("lon_180", ogr.OFTString))
     layer.CreateField(ogr.FieldDefn("lon_ew", ogr.OFTString))
     layer.CreateField(ogr.FieldDefn("lon_360", ogr.OFTString))
+    layer.CreateField(ogr.FieldDefn("lon_360e", ogr.OFTString))
     layer.CreateField(ogr.FieldDefn("grid_type", ogr.OFTString))
 
     #########################################################################
@@ -482,11 +503,12 @@ def main():
         feat.SetField("lat", float(lat))
         feat.SetFieldNull("lon")
 
-        feat.SetField("lat_180", lat_180_label(lat))
+        feat.SetField("lat_90", lat_90_label(lat))
         feat.SetField("lat_ns", lat_ns_label(lat))
         feat.SetFieldNull("lon_180")
         feat.SetFieldNull("lon_ew")
         feat.SetFieldNull("lon_360")
+        feat.SetFieldNull("lon_360e")
 
         if ymajor is None:
             feat.SetFieldNull("grid_type")
@@ -513,11 +535,12 @@ def main():
         feat.SetFieldNull("lat")
         feat.SetField("lon", float(lon))
 
-        feat.SetFieldNull("lat_180")
+        feat.SetFieldNull("lat_90")
         feat.SetFieldNull("lat_ns")
         feat.SetField("lon_180", lon_180_label(lon))
         feat.SetField("lon_ew", lon_ew_label(lon))
         feat.SetField("lon_360", lon_360_label(lon))
+        feat.SetField("lon_360e", lon_360e_label(lon))
 
         if xmajor is None:
             feat.SetFieldNull("grid_type")
