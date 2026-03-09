@@ -636,12 +636,6 @@ def main():
         except Exception:
             ct_to_target = None
     
-    center_lat, center_lon = (None, None)
-    if projected:
-        center_lat, center_lon = _get_projection_center_lat_lon(t_srs_i)
-        if center_lon is None:
-            center_lon = 0.0
-
     drv_mem = ogr.GetDriverByName("MEM") or ogr.GetDriverByName("Memory")
     if drv_mem is None:
         raise RuntimeError("OGR driver 'MEM' is not available in this GDAL build.")
