@@ -152,7 +152,7 @@ python mkgraticule_planet.py -srs IAU_2015:30135 \
 Example global graticule for the **Earth** using the **World Mollweide projection**  
 (`ESRI:54009`).
 
-This example shows that the tool can also be used for non-planetary workflows when a CRS is supported by GDAL / PROJ.
+This example shows that the tool can also be used with non-IAU coordinate reference systems supported by GDAL / PROJ.
 
 Command:
 
@@ -196,6 +196,7 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
+
 
 
 
