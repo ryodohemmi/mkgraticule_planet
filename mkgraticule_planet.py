@@ -23,7 +23,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -304,6 +304,176 @@ def _quiet_gdal_reprojection_domain_errors():
 
     return handler
 
+def _get_projection_center_lat_lon(srs: osr.SpatialReference):
+    """
+    Return (center_lat, center_lon) from common projection parameters, if available.
+    """
+    lat_keys = [
+        "latitude_of_origin",
+        "latitude_of_center",
+        "latitude_of_natural_origin",
+    ]
+    lon_keys = [
+        "central_meridian",
+        "longitude_of_center",
+        "longitude_of_origin",
+        "longitude_of_natural_origin",
+    ]
+
+    center_lat = None
+    center_lon = None
+
+    for key in lat_keys:
+        try:
+            center_lat = float(srs.GetProjParm(key))
+            break
+        except Exception:
+            pass
+
+    for key in lon_keys:
+        try:
+            center_lon = float(srs.GetProjParm(key))
+            break
+        except Exception:
+            pass
+
+    return center_lat, center_lon
+
+def _transform_point_safe(ct, x, y):
+    """
+    Safely transform a single point. Returns (X, Y) in target CRS or None.
+    Rejects NaN/Inf coordinates.
+    """
+    try:
+        out = ct.TransformPoint(float(x), float(y))
+        X = float(out[0])
+        Y = float(out[1])
+        if not (np.isfinite(X) and np.isfinite(Y)):
+            return None
+        return X, Y
+    except Exception:
+        return None
+
+
+def _collapsed_target_point(sample_coords, ct, tol=1e-8, min_ok_points=1):
+    """
+    Check whether a sampled source line collapses to a single point in the target CRS.
+
+    Returns
+    -------
+    (is_collapsed, target_point)
+        is_collapsed : bool
+        target_point : (X, Y) in target CRS, or None
+    """
+    pts = []
+    for x, y in sample_coords:
+        xy = _transform_point_safe(ct, x, y)
+        if xy is not None:
+            pts.append(xy)
+
+    if len(pts) < min_ok_points:
+        return False, None
+
+    if len(pts) == 1:
+        return True, pts[0]
+
+    x0, y0 = pts[0]
+    max_dist = 0.0
+    for x, y in pts[1:]:
+        d = ((x - x0) ** 2 + (y - y0) ** 2) ** 0.5
+        if d > max_dist:
+            max_dist = d
+
+    if max_dist <= tol:
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        X = sum(xs) / len(xs)
+        Y = sum(ys) / len(ys)
+        if np.isfinite(X) and np.isfinite(Y):
+            return True, (X, Y)
+
+    return False, None
+
+def _ensure_point_layer(ds_mem, point_layer, point_layer_name, srs_target):
+    """
+    Lazily create a companion point layer in the TARGET CRS.
+    """
+    if point_layer is not None:
+        return point_layer
+
+    point_layer = ds_mem.CreateLayer(point_layer_name, geom_type=ogr.wkbPoint, srs=srs_target)
+    if point_layer is None:
+        raise RuntimeError("Failed to create in-memory point layer.")
+
+    field_defn = ogr.FieldDefn("fid", ogr.OFTInteger)
+    point_layer.CreateField(field_defn)
+
+    field_lat = ogr.FieldDefn("lat", ogr.OFTReal)
+    field_lat.SetWidth(10)
+    field_lat.SetPrecision(3)
+    point_layer.CreateField(field_lat)
+
+    field_lon = ogr.FieldDefn("lon", ogr.OFTReal)
+    field_lon.SetWidth(10)
+    field_lon.SetPrecision(3)
+    point_layer.CreateField(field_lon)
+    
+    point_layer.CreateField(ogr.FieldDefn("lat_90", ogr.OFTString))
+    point_layer.CreateField(ogr.FieldDefn("lat_ns", ogr.OFTString))
+    point_layer.CreateField(ogr.FieldDefn("lon_180", ogr.OFTString))
+    point_layer.CreateField(ogr.FieldDefn("lon_ew", ogr.OFTString))
+    point_layer.CreateField(ogr.FieldDefn("lon_360", ogr.OFTString))
+    point_layer.CreateField(ogr.FieldDefn("lon_360e", ogr.OFTString))
+    point_layer.CreateField(ogr.FieldDefn("point_role", ogr.OFTString))
+    
+    return point_layer
+
+def _add_projection_center_point(
+    point_layer,
+    fid,
+    center_lat,
+    center_lon,
+    center_target_xy,
+):
+    """
+    Add a projection-center label point to the companion point layer.
+    The point geometry is already in target CRS.
+    """
+    feat = ogr.Feature(point_layer.GetLayerDefn())
+
+    feat.SetField("fid", int(fid))
+
+    if center_lat is None:
+        feat.SetFieldNull("lat")
+        feat.SetFieldNull("lat_90")
+        feat.SetFieldNull("lat_ns")
+    else:
+        feat.SetField("lat", float(center_lat))
+        feat.SetField("lat_90", lat_90_label(center_lat))
+        feat.SetField("lat_ns", lat_ns_label(center_lat))
+
+    if center_lon is None:
+        feat.SetFieldNull("lon")
+        feat.SetFieldNull("lon_180")
+        feat.SetFieldNull("lon_ew")
+        feat.SetFieldNull("lon_360")
+        feat.SetFieldNull("lon_360e")
+    else:
+        feat.SetField("lon", float(center_lon))
+        feat.SetField("lon_180", lon_180_label(center_lon))
+        feat.SetField("lon_ew", lon_ew_label(center_lon))
+        feat.SetField("lon_360", lon_360_label(center_lon))
+        feat.SetField("lon_360e", lon_360e_label(center_lon))
+
+    feat.SetField("point_role", "center")
+
+    pt = ogr.Geometry(ogr.wkbPoint)
+    pt.AddPoint(float(center_target_xy[0]), float(center_target_xy[1]))
+    pt.FlattenTo2D()
+    feat.SetGeometry(pt)
+
+    point_layer.CreateFeature(feat)
+    feat = None
 
 def main():
     args = get_args()
@@ -347,6 +517,10 @@ def main():
     t_srs_i = osr.SpatialReference()
     t_srs_i.SetFromUserInput(t_srs)
 
+    # Force traditional GIS axis order (x=lon, y=lat) for manual transformations
+    if hasattr(osr, "OAMS_TRADITIONAL_GIS_ORDER"):
+        t_srs_i.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+
     if t_srs_i.IsGeographic() == 1:
         projected = False
         proj_type = None
@@ -356,8 +530,16 @@ def main():
         if proj_type is None:
             proj_type = "Unknown projection"
 
-    # NOTE: original script creates features in geographic CRS, then reprojects if needed.
+    # Geographic base CRS used to generate the graticule
     t_srs_geog = t_srs_i.CloneGeogCS()
+    if hasattr(osr, "OAMS_TRADITIONAL_GIS_ORDER"):
+        t_srs_geog.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+
+    center_lat, center_lon = (None, None)
+    if projected:
+        center_lat, center_lon = _get_projection_center_lat_lon(t_srs_i)
+        if center_lon is None:
+            center_lon = 0.0
 
     if args.lato is not None and projected:
         try:
@@ -444,6 +626,22 @@ def main():
     # Create Layer in memory
     layer_name = os.path.splitext(os.path.basename(outfile))[0]
 
+    point_layer = None
+    point_layer_name = f"{layer_name}_points"
+
+    ct_to_target = None
+    if projected:
+        try:
+            ct_to_target = osr.CoordinateTransformation(t_srs_geog, t_srs_i)
+        except Exception:
+            ct_to_target = None
+    
+    center_lat, center_lon = (None, None)
+    if projected:
+        center_lat, center_lon = _get_projection_center_lat_lon(t_srs_i)
+        if center_lon is None:
+            center_lon = 0.0
+
     drv_mem = ogr.GetDriverByName("MEM") or ogr.GetDriverByName("Memory")
     if drv_mem is None:
         raise RuntimeError("OGR driver 'MEM' is not available in this GDAL build.")
@@ -494,8 +692,64 @@ def main():
     fid = 0
     for i, lat in enumerate(latitudes):
         progress_bar(i, latitudes, "Processing Latitudes: ")
+
+        lon_samples = np.arange(xmin, xmax + 1e-12, xres, dtype=float)
+        sample_coords = [(float(lon), float(lat)) for lon in lon_samples]
+
+        is_collapsed = False
+        collapsed_target_xy = None
+
+        # First, try the generic geometric collapse test
+        if projected and ct_to_target is not None:
+            is_collapsed, collapsed_target_xy = _collapsed_target_point(sample_coords, ct_to_target)
+
+        # Fallback for true polar singularities:
+        # if the target projection center is at a pole and this latitude matches that pole,
+        # force a point at the transformed pole location even if all sampled line points failed.
+        if (
+            not is_collapsed
+            and projected
+            and center_lat is not None
+            and center_lon is not None
+            and abs(abs(center_lat) - 90.0) < 1e-9
+            and abs(float(lat) - float(center_lat)) < 1e-9
+            and ct_to_target is not None
+        ):
+            pole_xy = _transform_point_safe(ct_to_target, center_lon, center_lat)
+            if pole_xy is not None:
+                is_collapsed = True
+                collapsed_target_xy = pole_xy
+
+        if is_collapsed and collapsed_target_xy is not None:
+            point_layer = _ensure_point_layer(ds_mem, point_layer, point_layer_name, t_srs_i)
+
+            pt = ogr.Geometry(ogr.wkbPoint)
+            pt.AddPoint(float(collapsed_target_xy[0]), float(collapsed_target_xy[1]))
+
+            feat = ogr.Feature(point_layer.GetLayerDefn())
+            feat.SetField("fid", int(fid))
+            feat.SetField("lat", float(lat))
+            feat.SetFieldNull("lon")
+
+            feat.SetField("lat_90", lat_90_label(lat))
+            feat.SetField("lat_ns", lat_ns_label(lat))
+            feat.SetFieldNull("lon_180")
+            feat.SetFieldNull("lon_ew")
+            feat.SetFieldNull("lon_360")
+            feat.SetFieldNull("lon_360e")
+
+            feat.SetField("point_role", "collapsed")
+            
+            pt.FlattenTo2D()
+            feat.SetGeometry(pt)
+            point_layer.CreateFeature(feat)
+            
+            feat = None
+            fid += 1
+            continue
+
         line = ogr.Geometry(ogr.wkbLineString)
-        for lon in np.arange(xmin, xmax + 1e-12, xres, dtype=float):
+        for lon in lon_samples:
             line.AddPoint(float(lon), float(lat))
 
         feat = ogr.Feature(layer.GetLayerDefn())
@@ -526,8 +780,43 @@ def main():
     # Create features: longitude lines
     for i, lon in enumerate(longitudes):
         progress_bar(i, longitudes, "Processing Longitudes: ")
+
+        lat_samples = np.arange(ymin, ymax + 1e-12, yres, dtype=float)
+        sample_coords = [(float(lon), float(lat)) for lat in lat_samples]
+
+        is_collapsed = False
+        collapsed_target_xy = None
+        if projected and ct_to_target is not None:
+            is_collapsed, collapsed_target_xy = _collapsed_target_point(sample_coords, ct_to_target)
+
+        if is_collapsed and collapsed_target_xy is not None:
+            point_layer = _ensure_point_layer(ds_mem, point_layer, point_layer_name, t_srs_i)
+
+            pt = ogr.Geometry(ogr.wkbPoint)
+            pt.AddPoint(float(collapsed_target_xy[0]), float(collapsed_target_xy[1]))
+
+            feat = ogr.Feature(point_layer.GetLayerDefn())
+            feat.SetField("fid", int(fid))
+            feat.SetFieldNull("lat")
+            feat.SetField("lon", float(lon))
+
+            feat.SetFieldNull("lat_90")
+            feat.SetFieldNull("lat_ns")
+            feat.SetField("lon_180", lon_180_label(lon))
+            feat.SetField("lon_ew", lon_ew_label(lon))
+            feat.SetField("lon_360", lon_360_label(lon))
+            feat.SetField("lon_360e", lon_360e_label(lon))
+            feat.SetField("point_role", "collapsed")
+
+            pt.FlattenTo2D()
+            feat.SetGeometry(pt)
+            point_layer.CreateFeature(feat)
+            feat = None
+            fid += 1
+            continue
+
         line = ogr.Geometry(ogr.wkbLineString)
-        for lat in np.arange(ymin, ymax + 1e-12, yres, dtype=float):
+        for lat in lat_samples:
             line.AddPoint(float(lon), float(lat))
 
         feat = ogr.Feature(layer.GetLayerDefn())
@@ -555,6 +844,37 @@ def main():
 
     sys.stdout.write("\n")
 
+    # Add a projection-center label point (in target CRS) if available
+    if projected and ct_to_target is not None and center_lat is not None and center_lon is not None:
+        center_target_xy = _transform_point_safe(ct_to_target, center_lon, center_lat)
+
+        if center_target_xy is not None:
+            point_layer = _ensure_point_layer(ds_mem, point_layer, point_layer_name, t_srs_i)
+
+            # Avoid duplicating the exact same point if a collapsed feature already exists there
+            duplicate_center = False
+            if point_layer.GetFeatureCount() > 0:
+                for feat_existing in point_layer:
+                    geom_existing = feat_existing.GetGeometryRef()
+                    if geom_existing is None:
+                        continue
+                    x0, y0, _ = geom_existing.GetPoint()
+                    if ((x0 - center_target_xy[0]) ** 2 + (y0 - center_target_xy[1]) ** 2) ** 0.5 <= 1e-8:
+                        if feat_existing.GetField("point_role") == "center":
+                            duplicate_center = True
+                            break
+                point_layer.ResetReading()
+
+            if not duplicate_center:
+                _add_projection_center_point(
+                    point_layer=point_layer,
+                    fid=fid,
+                    center_lat=center_lat,
+                    center_lon=center_lon,
+                    center_target_xy=center_target_xy,
+                )
+                fid += 1
+
     #########################################################################
     # Write GeoPackage
     print("=" * terminal_width)
@@ -579,6 +899,7 @@ def main():
 
     vt_opts = gdal.VectorTranslateOptions(
         format="GPKG",
+        layers=[layer_name],   # <- main line layer only
         layerName=layer_name,
         dstSRS=t_srs_i,
         srcSRS=t_srs_geog,
@@ -617,6 +938,30 @@ def main():
             else:
                 gdal.SetConfigOption("OGR_ENABLE_PARTIAL_REPROJECTION", prev_partial)
 
+    # Write companion point layer if present
+    if point_layer is not None and point_layer.GetFeatureCount() > 0:
+        vt_point_opts = gdal.VectorTranslateOptions(
+            format="GPKG",
+            accessMode="update",
+            layers=[point_layer_name],   # <- point layer only
+            layerName=point_layer_name,
+            srcSRS=t_srs_i,
+            dstSRS=t_srs_i,
+            layerCreationOptions=[
+                "SPATIAL_INDEX=YES",
+            ],
+            skipFailures=args.skipfailures,
+        )
+
+        if args.skipfailures:
+            gdal.PushErrorHandler(_quiet_gdal_reprojection_domain_errors())
+
+        try:
+            gdal.VectorTranslate(outfile, ds_mem, options=vt_point_opts)
+        finally:
+            if args.skipfailures:
+                gdal.PopErrorHandler()
+
     # Post-run note only for domain-limited projected + near-global runs
     if projected and global_like and projection_is_domain_limited:
         if args.skipfailures:
@@ -639,6 +984,7 @@ def main():
     #########################################################################
     # Cleanup
     layer = None
+    point_layer = None
     ds_mem = None
 
 
