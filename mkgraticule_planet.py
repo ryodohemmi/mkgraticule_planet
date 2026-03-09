@@ -118,11 +118,11 @@ def get_args():
     )
 
     parser.add_argument(
-        "-ndd",
-        "--no-duplicate-dateline",
+        "-nde",
+        "--no-duplicate-endpoint",
         action="store_true",
-        help="When the longitude span is ~360 degrees, drop the duplicate endpoint meridian "
-             "(e.g., keep 180 instead of -180, or keep 360 instead of 0). Useful for global or polar views.",
+        help="Drop the duplicate endpoint meridian when the longitude span is ~360 degrees "
+            "(e.g., keep -180 and drop 180, or keep 0 and drop 360).",
     )
 
     args = parser.parse_args()
@@ -428,7 +428,7 @@ def main():
     longitudes = np.arange(xmin, xmax + 1e-12, xstep, dtype=float)
 
     # Optional: remove duplicate endpoint meridian for full 360-degree longitude spans
-    if args.no_duplicate_dateline:
+    if args.no_duplicate_endpoint:
         span = xmax - xmin
         spans_full_360 = abs(span - 360.0) < 1e-9
 
