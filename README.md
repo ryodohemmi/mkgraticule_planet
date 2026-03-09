@@ -15,11 +15,11 @@ A small CLI utility for generating latitude/longitude grids for planetary bodies
 * Safer handling for projected CRS with limited domains:
   * abort on projected + near-global extent unless `-s/--skipfailures` is used
   * optional `-p/--partial-reprojection` for partial output near projection-domain limits
-* Optional dateline de-duplication for near-global longitude ranges: `-ndd/--no-duplicate-dateline`
+* Optional dateline de-duplication for near-global longitude ranges: `-nde/--no-duplicate-endpoint`
 
 Latitude labels:
 
-* `lat_180` → -90° to 90°
+* `lat_90` → -90° to 90°
 * `lat_ns` → 90°S to 90°N
 
 Longitude labels:
@@ -27,6 +27,7 @@ Longitude labels:
 * `lon_180` → -180° to 180°
 * `lon_ew` → 180°W to 180°E
 * `lon_360` → 0° to 360°
+* `lon_360e` → 0°E to 360°E
 
 ## Requirements
 
@@ -88,12 +89,16 @@ Combining `-s` with `-p` can sometimes produce partial output near projection do
 
 ### Dateline handling
 
-If the longitude span is approximately **360°** (e.g. `-180..180`), both `-180` and `180` meridians can be generated.
+If the longitude span is approximately **360°** (e.g. `-180..180` or `0..360`), duplicate endpoint meridians can be generated.
 
-To drop the duplicate dateline meridian (remove `-180` and keep `+180`)
+To drop the duplicate endpoint meridian while keeping the minimum longitude endpoint:
+
+- `-180..180` → keep `-180`, drop `180`
+
+- `0..360` → keep `0`, drop `360`
 
 ```sh
-python mkgraticule_planet.py ... -ndd
+python mkgraticule_planet.py ... -nde
 ```
 
 ## Planetary CRS
@@ -134,14 +139,14 @@ Example graticule generated for the **Moon south polar stereographic projection*
 
 Because polar stereographic projections have a **limited valid domain**,  
 the geographic extent is restricted to the south polar region.  
-The `-ndd` option is used to remove the duplicate dateline meridian.
+The `-nde` option is used to remove the duplicate endpoint meridian.
 
 Command:
 
 ```sh
 python mkgraticule_planet.py -srs IAU_2015:30135 \
                              -g 10 1 -m 30 2 \
-                             -e -180 -80 180 -90 -ndd \
+                             -e -180 -80 180 -90 -nde \
                              moon_south_pole_graticule.gpkg
 ```
 
@@ -173,11 +178,12 @@ python mkgraticule_planet.py -srs ESRI:54009 \
 | fid     | feature id                      |
 | lat     | latitude value                  |
 | lon     | longitude value                 |
-| lat_180 | latitude label (-90° … 90°)     |
+| lat_90 | latitude label (-90° … 90°)     |
 | lat_ns  | latitude label (90°S … 90°N)    |
 | lon_180 | longitude label (-180° … 180°)  |
 | lon_ew  | longitude label (180°W … 180°E) |
 | lon_360 | longitude label (0° … 360°)     |
+| lon_360 | longitude label (0°E … 360°E)     |
 | grid_type | `"major"` / `"minor"` when `--major` is used (otherwise NULL) |
 
 ## Acknowledgement
@@ -196,6 +202,7 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
+
 
 
 
