@@ -15,7 +15,11 @@ A small CLI utility for generating latitude/longitude grids for planetary bodies
 * Safer handling for projected CRS with limited domains:
   * abort on projected + near-global extent unless `-s/--skipfailures` is used
   * optional `-p/--partial-reprojection` for partial output near projection-domain limits
-* Optional dateline de-duplication for near-global longitude ranges: `-nde/--no-duplicate-endpoint`
+* Optional endpoint de-duplication for 360° longitude spans: `-nde/--no-duplicate-endpoint`
+* Automatic companion point layer (`*_points`) for projected CRS:
+  * collapsed graticule features at projection singularities
+  * projection-center label points
+* Point-role classification in the companion point layer via `point_role` (`collapsed` / `center`)
 
 Latitude labels:
 
@@ -87,6 +91,14 @@ If a near-global geographic extent is requested, reprojection may fail.
 For projected + near-global requests, restricting the extent with `-e` is usually the best solution.  
 Combining `-s` with `-p` can sometimes produce partial output near projection domain limits.
 
+For projections with a singular center, the tool also writes a companion point layer (`*_points`).  
+This layer can contain:
+
+- `collapsed` points for graticule features that collapse to a single point in the projected CRS
+- `center` points for projection-center label points
+
+This makes it possible to label features such as `90°S`, `90°N`, or a projection-center graticule label in QGIS even when the corresponding line geometry is not visible.
+
 ### Dateline handling
 
 If the longitude span is approximately **360°** (e.g. `-180..180` or `0..360`), duplicate endpoint meridians can be generated.
@@ -141,6 +153,8 @@ Because polar stereographic projections have a **limited valid domain**,
 the geographic extent is restricted to the south polar region.  
 The `-nde` option is used to remove the duplicate endpoint meridian.
 
+For this type of projection, the tool also writes a companion point layer (`*_points`), which can be used to display labels such as `90°S` at the projection center in QGIS.
+
 Command:
 
 ```sh
@@ -173,18 +187,35 @@ python mkgraticule_planet.py -srs ESRI:54009 \
 
 ## Output fields
 
-| Field   | Description                     |
-| ------- | ------------------------------- |
-| fid     | feature id                      |
-| lat     | latitude value                  |
-| lon     | longitude value                 |
-| lat_90 | latitude label (-90° … 90°)     |
-| lat_ns  | latitude label (90°S … 90°N)    |
-| lon_180 | longitude label (-180° … 180°)  |
-| lon_ew  | longitude label (180°W … 180°E) |
-| lon_360 | longitude label (0° … 360°)     |
-| lon_360e | longitude label (0°E … 360°E)     |
-| grid_type | `"major"` / `"minor"` when `--major` is used (otherwise NULL) |
+### Main graticule layer
+
+| Field      | Description |
+| ---------- | ----------- |
+| fid        | feature id |
+| lat        | latitude value |
+| lon        | longitude value |
+| lat_90     | latitude label (-90° … 90°) |
+| lat_ns     | latitude label (90°S … 90°N) |
+| lon_180    | longitude label (-180° … 180°) |
+| lon_ew     | longitude label (180°W … 180°E) |
+| lon_360    | longitude label (0° … 360°) |
+| lon_360e   | longitude label (0°E … 360°E) |
+| grid_type  | `"major"` / `"minor"` when `--major` is used (otherwise NULL) |
+
+### Companion point layer (`*_points`)
+
+| Field      | Description |
+| ---------- | ----------- |
+| fid        | feature id |
+| lat        | latitude value, when applicable |
+| lon        | longitude value, when applicable |
+| lat_90     | latitude label (-90° … 90°) |
+| lat_ns     | latitude label (90°S … 90°N) |
+| lon_180    | longitude label (-180° … 180°) |
+| lon_ew     | longitude label (180°W … 180°E) |
+| lon_360    | longitude label (0° … 360°) |
+| lon_360e   | longitude label (0°E … 360°E) |
+| point_role | point role: `collapsed` or `center` |
 
 ## Acknowledgement
 
@@ -202,6 +233,7 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
+
 
 
 
