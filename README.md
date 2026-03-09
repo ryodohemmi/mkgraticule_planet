@@ -183,7 +183,7 @@ python mkgraticule_planet.py -srs ESRI:54009 \
 | lon_180 | longitude label (-180° … 180°)  |
 | lon_ew  | longitude label (180°W … 180°E) |
 | lon_360 | longitude label (0° … 360°)     |
-| lon_360 | longitude label (0°E … 360°E)     |
+| lon_360e | longitude label (0°E … 360°E)     |
 | grid_type | `"major"` / `"minor"` when `--major` is used (otherwise NULL) |
 
 ## Acknowledgement
@@ -202,6 +202,7 @@ https://doi.org/10.5281/zenodo.18864189
 ## License
 
 MIT License. See the LICENSE file for details.
+
 
 
 
