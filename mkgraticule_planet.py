@@ -95,9 +95,10 @@ def get_args():
     )
     parser.add_argument(
         "-lo",
-        "--lato",
+        "--lat-orig",
         type=float,
-        metavar="lato",
+        dest="lat_orig",
+        metavar="lat_orig",
         default=None,
         help="Force to override the latitude of origin (center) of the projection specified by -srs",
     )
@@ -541,14 +542,14 @@ def main():
         if center_lon is None:
             center_lon = 0.0
 
-    if args.lato is not None and projected:
+    if args.lat_orig is not None and projected:
         try:
-            t_srs_i.SetProjParm("latitude_of_origin", float(args.lato))
+            t_srs_i.SetProjParm("latitude_of_origin", float(args.lat_orig))
             center_lat, center_lon = _get_projection_center_lat_lon(t_srs_i)
             if center_lon is None:
                 center_lon = 0.0
         except Exception as e:
-            print(f"WARN: failed to override latitude_of_origin with -lo {args.lato}: {e}")
+            print(f"WARN: failed to override latitude_of_origin with -lo {args.lat_orig}: {e}")
 
     #########################################################################
     # Grid / extent
