@@ -562,10 +562,12 @@ def main():
         t_srs_geog.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
 
     center_lat, center_lon = (None, None)
+    base_center_lat, base_center_lon = (None, None)
     if projected:
         center_lat, center_lon = _get_projection_center_lat_lon(t_srs_i)
         if center_lon is None:
             center_lon = 0.0
+        base_center_lat, base_center_lon = center_lat, center_lon
 
     if args.lat_ts is not None and projected:
         try:
@@ -632,6 +634,28 @@ def main():
     xmax = max(ulx, lrx)
     ymin = min(lry, uly)
     ymax = max(lry, uly)
+
+    if projected and (args.lat_ts is not None or args.lon_origin is not None):
+        # Keep the geographic graticule window centered relative to the overridden
+        # projection center by shifting input lat/lon extent by center deltas.
+        if (
+            base_center_lat is not None and base_center_lon is not None
+            and center_lat is not None and center_lon is not None
+        ):
+            dlat = float(center_lat) - float(base_center_lat)
+            dlon = float(center_lon) - float(base_center_lon)
+            xmin += dlon
+            xmax += dlon
+            ymin += dlat
+            ymax += dlat
+            # Geographic latitude must stay within valid bounds.
+            ymin = max(-90.0, ymin)
+            ymax = min(90.0, ymax)
+            if ymin >= ymax:
+                raise ValueError(
+                    "Adjusted latitude extent is invalid after applying center offset. "
+                    f"Got ymin={ymin}, ymax={ymax}."
+                )
 
     # Near-global extent check
     global_like = (
