@@ -318,7 +318,8 @@ def _get_projection_center_lat_lon(srs: osr.SpatialReference):
     """
     Return (center_lat, center_lon) of the projection convergence center if available.
     """
-    proj_name = (srs.GetAttrValue("PROJECTION") or "").upper()
+    proj_name = (srs.GetAttrValue("PROJECTION") or "")
+    proj_name_upper = proj_name.upper()
 
     def _first_projparm(keys):
         for key in keys:
@@ -335,16 +336,27 @@ def _get_projection_center_lat_lon(srs: osr.SpatialReference):
         "longitude_of_natural_origin",
     ])
 
-    if "POLAR_STEREOGRAPHIC" in proj_name:
-        # Respect user-specified lat_ts / standard parallel as logical center for
-        # the generated graticule/point metadata in this tool's workflow.
-        lat_ts = _first_projparm([
-            "standard_parallel_1",
+    radial_projection_names = {
+        "STEREOGRAPHIC",
+        "POLAR_STEREOGRAPHIC",
+        "ORTHOGRAPHIC",
+        "GNOMONIC",
+        "VERTICAL_PERSPECTIVE",
+        "AZIMUTHAL_EQUIDISTANT",
+    }
+    is_radial_projection = proj_name_upper in radial_projection_names
+
+    if is_radial_projection:
+        # For radial/azimuthal-type projections, prefer explicit center-related
+        # parameters and lat_ts/standard_parallel when provided.
+        center_lat = _first_projparm([
+            "latitude_of_center",
             "latitude_of_origin",
+            "standard_parallel_1",
             "latitude_of_true_scale",
+            "latitude_of_natural_origin",
         ])
-        if lat_ts is not None:
-            return lat_ts, center_lon
+        return center_lat, center_lon
 
     center_lat = _first_projparm([
         "latitude_of_center",
@@ -558,15 +570,23 @@ def main():
     if args.lat_ts is not None and projected:
         try:
             lat_ts = float(args.lat_ts)
-            # Keep compatibility across stereographic variants used by GDAL/PROJ.
-            t_srs_i.SetProjParm("standard_parallel_1", lat_ts)
-            t_srs_i.SetProjParm("latitude_of_true_scale", lat_ts)
-            t_srs_i.SetProjParm("latitude_of_origin", lat_ts)
+            # Apply across common center/scale latitude parameters so azimuthal
+            # and stereographic variants all honor the override.
+            for key in [
+                "standard_parallel_1",
+                "latitude_of_true_scale",
+                "latitude_of_origin",
+                "latitude_of_center",
+            ]:
+                try:
+                    t_srs_i.SetProjParm(key, lat_ts)
+                except Exception:
+                    pass
             center_lat, center_lon = _get_projection_center_lat_lon(t_srs_i)
             if center_lon is None:
                 center_lon = 0.0
         except Exception as e:
-            print(f"WARN: failed to override latitude_of_true_scale with -lat1 {args.lat_ts}: {e}")
+            print(f"WARN: failed to override latitude-of-center/scale with -lat1 {args.lat_ts}: {e}")
 
     if args.lon_origin is not None and projected:
         try:
