@@ -23,7 +23,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -544,6 +544,9 @@ def main():
     if args.lato is not None and projected:
         try:
             t_srs_i.SetProjParm("latitude_of_origin", float(args.lato))
+            center_lat, center_lon = _get_projection_center_lat_lon(t_srs_i)
+            if center_lon is None:
+                center_lon = 0.0
         except Exception as e:
             print(f"WARN: failed to override latitude_of_origin with -lo {args.lato}: {e}")
 
@@ -553,8 +556,16 @@ def main():
     xres, yres = args.res
     ulx, uly, lrx, lry = args.extent
 
+    if xstep <= 0 or ystep <= 0:
+        raise ValueError(f"--grid values must be > 0. Got xstep={xstep}, ystep={ystep}")
+
+    if xres <= 0 or yres <= 0:
+        raise ValueError(f"--res values must be > 0. Got xres={xres}, yres={yres}")
+
     if args.major is not None:
         xmajor, ymajor = args.major
+        if xmajor <= 0 or ymajor <= 0:
+            raise ValueError(f"--major values must be > 0. Got xmajor={xmajor}, ymajor={ymajor}")
     else:
         xmajor = ymajor = None
 
@@ -854,9 +865,8 @@ def main():
                         continue
                     x0, y0, _ = geom_existing.GetPoint()
                     if ((x0 - center_target_xy[0]) ** 2 + (y0 - center_target_xy[1]) ** 2) ** 0.5 <= 1e-8:
-                        if feat_existing.GetField("point_role") == "center":
-                            duplicate_center = True
-                            break
+                        duplicate_center = True
+                        break
                 point_layer.ResetReading()
 
             if not duplicate_center:
