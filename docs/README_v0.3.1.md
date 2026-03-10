@@ -250,5 +250,5 @@ MIT License. See the LICENSE file for details.
 ### v0.3.1
 
 - Validate `--grid`, `--res`, and `--major` values to ensure positive step inputs.
-- Recompute projection-center coordinates after `-lo/--lato` overrides `latitude_of_origin`.
+- Recompute projection-center coordinates after `-lat1/--lat-ts` overrides `latitude_of_origin`.
 - Improve projection-center duplicate-point detection by treating any coincident point as duplicate.

@@ -9,7 +9,7 @@
 
   Non-positive values now fail fast with clear `ValueError` messages.
 
-- Fixed projection-center handling when `-lo/--lato` is specified.
+- Fixed projection-center handling when `-lat1/--lat-ts` is specified.
   After overriding `latitude_of_origin`, the tool now recomputes center latitude/longitude used for center-related logic.
 
 - Improved center-point duplicate detection in the companion point layer (`*_points`).

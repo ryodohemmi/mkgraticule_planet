@@ -94,13 +94,22 @@ def get_args():
         help="Set a spatial extent of the output file",
     )
     parser.add_argument(
-        "-lo",
-        "--lat-orig",
+        "-lat1",
+        "--lat-ts",
         type=float,
-        dest="lat_orig",
-        metavar="lat_orig",
+        dest="lat_ts",
+        metavar="lat_ts",
         default=None,
-        help="Force to override the latitude of origin (center) of the projection specified by -srs",
+        help="Override latitude of true scale / standard parallel (e.g., Polar Stereographic lat_ts)",
+    )
+    parser.add_argument(
+        "-lon0",
+        "--lon-origin",
+        type=float,
+        dest="lon_origin",
+        metavar="lon_origin",
+        default=None,
+        help="Override longitude of origin / central meridian of the projection",
     )
 
     parser.add_argument(
@@ -307,37 +316,42 @@ def _quiet_gdal_reprojection_domain_errors():
 
 def _get_projection_center_lat_lon(srs: osr.SpatialReference):
     """
-    Return (center_lat, center_lon) from common projection parameters, if available.
+    Return (center_lat, center_lon) of the projection convergence center if available.
     """
-    lat_keys = [
-        "latitude_of_origin",
-        "latitude_of_center",
-        "latitude_of_natural_origin",
-    ]
-    lon_keys = [
+    proj_name = (srs.GetAttrValue("PROJECTION") or "").upper()
+
+    def _first_projparm(keys):
+        for key in keys:
+            try:
+                return float(srs.GetProjParm(key))
+            except Exception:
+                pass
+        return None
+
+    center_lon = _first_projparm([
         "central_meridian",
         "longitude_of_center",
         "longitude_of_origin",
         "longitude_of_natural_origin",
-    ]
+    ])
 
-    center_lat = None
-    center_lon = None
+    if "POLAR_STEREOGRAPHIC" in proj_name:
+        # For polar stereographic, meridians converge at the pole;
+        # latitude_of_origin is commonly used as lat_ts (standard parallel).
+        lat_ts = _first_projparm([
+            "standard_parallel_1",
+            "latitude_of_origin",
+            "latitude_of_true_scale",
+        ])
+        if lat_ts is None:
+            return None, center_lon
+        return (-90.0 if lat_ts < 0 else 90.0), center_lon
 
-    for key in lat_keys:
-        try:
-            center_lat = float(srs.GetProjParm(key))
-            break
-        except Exception:
-            pass
-
-    for key in lon_keys:
-        try:
-            center_lon = float(srs.GetProjParm(key))
-            break
-        except Exception:
-            pass
-
+    center_lat = _first_projparm([
+        "latitude_of_center",
+        "latitude_of_origin",
+        "latitude_of_natural_origin",
+    ])
     return center_lat, center_lon
 
 def _transform_point_safe(ct, x, y):
@@ -542,14 +556,23 @@ def main():
         if center_lon is None:
             center_lon = 0.0
 
-    if args.lat_orig is not None and projected:
+    if args.lat_ts is not None and projected:
         try:
-            t_srs_i.SetProjParm("latitude_of_origin", float(args.lat_orig))
+            t_srs_i.SetProjParm("latitude_of_origin", float(args.lat_ts))
             center_lat, center_lon = _get_projection_center_lat_lon(t_srs_i)
             if center_lon is None:
                 center_lon = 0.0
         except Exception as e:
-            print(f"WARN: failed to override latitude_of_origin with -lo {args.lat_orig}: {e}")
+            print(f"WARN: failed to override latitude_of_true_scale with -lat1 {args.lat_ts}: {e}")
+
+    if args.lon_origin is not None and projected:
+        try:
+            t_srs_i.SetProjParm("central_meridian", float(args.lon_origin))
+            center_lat, center_lon = _get_projection_center_lat_lon(t_srs_i)
+            if center_lon is None:
+                center_lon = 0.0
+        except Exception as e:
+            print(f"WARN: failed to override longitude_of_origin with -lon0 {args.lon_origin}: {e}")
 
     #########################################################################
     # Grid / extent
