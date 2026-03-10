@@ -336,16 +336,15 @@ def _get_projection_center_lat_lon(srs: osr.SpatialReference):
     ])
 
     if "POLAR_STEREOGRAPHIC" in proj_name:
-        # For polar stereographic, meridians converge at the pole;
-        # latitude_of_origin is commonly used as lat_ts (standard parallel).
+        # Respect user-specified lat_ts / standard parallel as logical center for
+        # the generated graticule/point metadata in this tool's workflow.
         lat_ts = _first_projparm([
             "standard_parallel_1",
             "latitude_of_origin",
             "latitude_of_true_scale",
         ])
-        if lat_ts is None:
-            return None, center_lon
-        return (-90.0 if lat_ts < 0 else 90.0), center_lon
+        if lat_ts is not None:
+            return lat_ts, center_lon
 
     center_lat = _first_projparm([
         "latitude_of_center",
@@ -558,7 +557,11 @@ def main():
 
     if args.lat_ts is not None and projected:
         try:
-            t_srs_i.SetProjParm("latitude_of_origin", float(args.lat_ts))
+            lat_ts = float(args.lat_ts)
+            # Keep compatibility across stereographic variants used by GDAL/PROJ.
+            t_srs_i.SetProjParm("standard_parallel_1", lat_ts)
+            t_srs_i.SetProjParm("latitude_of_true_scale", lat_ts)
+            t_srs_i.SetProjParm("latitude_of_origin", lat_ts)
             center_lat, center_lon = _get_projection_center_lat_lon(t_srs_i)
             if center_lon is None:
                 center_lon = 0.0
