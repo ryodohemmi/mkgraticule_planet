@@ -597,6 +597,18 @@ def main():
         except Exception as e:
             print(f"WARN: failed to override longitude_of_origin with -lon0 {args.lon_origin}: {e}")
 
+    if projected and (args.lat_ts is not None or args.lon_origin is not None):
+        # Rebuild from WKT so downstream reprojection uses the overridden parameters
+        # as a custom CRS, instead of potentially re-resolving the original authority code.
+        try:
+            t_srs_i_custom = osr.SpatialReference()
+            t_srs_i_custom.ImportFromWkt(t_srs_i.ExportToWkt())
+            if hasattr(osr, "OAMS_TRADITIONAL_GIS_ORDER"):
+                t_srs_i_custom.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+            t_srs_i = t_srs_i_custom
+        except Exception as e:
+            print(f"WARN: failed to rebuild overridden target CRS from WKT: {e}")
+
     #########################################################################
     # Grid / extent
     xstep, ystep = args.grid
