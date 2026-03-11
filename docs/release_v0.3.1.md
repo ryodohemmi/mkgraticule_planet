@@ -8,11 +8,8 @@
   - `-r/--res` (`xres`, `yres`) must be `> 0`
   - `xstep <= 360`, `ystep <= 180`
   - when `-m/--major` is provided, `xmajor`, `ymajor` must be `> 0`
-- Added major-interval applicability rule:
-  - `xmajor` is applied only if it is a natural-number multiple of `xstep`
-  - `ymajor` is applied only if it is a natural-number multiple of `ystep`
-  - when not applicable, corresponding `grid_type` remains `NULL` and an informational message is printed
+  - when `-m/--major` is provided, `xmajor` must be a natural-number multiple of `xstep`, and `ymajor` must be a natural-number multiple of `ystep`
 
 ## Notes
 
-These changes prevent invalid inputs from reaching `np.arange(...)` and make major/minor classification behavior explicit for incompatible major intervals.
+These changes prevent invalid inputs from reaching `np.arange(...)` and reject incompatible major interval combinations at argument-parse time.

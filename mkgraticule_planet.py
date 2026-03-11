@@ -135,6 +135,16 @@ def get_args():
             if value <= 0:
                 parser.error(f"{name} must be > 0 (got {value}).")
 
+        xr = xmajor / xstep
+        yr = ymajor / ystep
+        if abs(xr - round(xr)) > 1e-9 or round(xr) < 1:
+            parser.error(
+                f"xmajor must be a natural-number multiple of xstep (got xmajor={xmajor}, xstep={xstep})."
+            )
+        if abs(yr - round(yr)) > 1e-9 or round(yr) < 1:
+            parser.error(
+                f"ymajor must be a natural-number multiple of ystep (got ymajor={ymajor}, ystep={ystep})."
+            )
 
     return args
 
@@ -297,18 +307,6 @@ def _is_multiple(val: float, base: float, eps: float = 1e-9) -> bool:
         return False
     k = float(val) / base
     return abs(k - round(k)) < eps
-
-
-def _is_natural_multiple(major: float, grid: float, eps: float = 1e-9) -> bool:
-    """True if major/grid is a positive integer (approximately)."""
-    if major is None or grid is None:
-        return False
-    major = float(major)
-    grid = float(grid)
-    if major <= 0 or grid <= 0:
-        return False
-    ratio = major / grid
-    return abs(ratio - round(ratio)) < eps and round(ratio) >= 1
 
 
 def _quiet_gdal_reprojection_domain_errors():
@@ -574,25 +572,6 @@ def main():
     else:
         xmajor = ymajor = None
 
-    apply_xmajor = xmajor is not None
-    apply_ymajor = ymajor is not None
-
-    if apply_xmajor and not _is_natural_multiple(xmajor, xstep):
-        print(
-            f"INFO: xmajor={xmajor} is not a natural-number multiple of xgrid(xstep)={xstep}. "
-            "Longitude grid_type is kept NULL.",
-            file=sys.stderr,
-        )
-        apply_xmajor = False
-
-    if apply_ymajor and not _is_natural_multiple(ymajor, ystep):
-        print(
-            f"INFO: ymajor={ymajor} is not a natural-number multiple of ygrid(ystep)={ystep}. "
-            "Latitude grid_type is kept NULL.",
-            file=sys.stderr,
-        )
-        apply_ymajor = False
-
     xmin = min(ulx, lrx)
     xmax = max(ulx, lrx)
     ymin = min(lry, uly)
@@ -793,7 +772,7 @@ def main():
         feat.SetFieldNull("lon_360")
         feat.SetFieldNull("lon_360e")
 
-        if not apply_ymajor:
+        if ymajor is None:
             feat.SetFieldNull("grid_type")
         else:
             feat.SetField("grid_type", "major" if _is_multiple(lat, ymajor) else "minor")
@@ -860,7 +839,7 @@ def main():
         feat.SetField("lon_360", lon_360_label(lon))
         feat.SetField("lon_360e", lon_360e_label(lon))
 
-        if not apply_xmajor:
+        if xmajor is None:
             feat.SetFieldNull("grid_type")
         else:
             feat.SetField("grid_type", "major" if _is_multiple(lon, xmajor) else "minor")
