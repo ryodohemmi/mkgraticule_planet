@@ -50,6 +50,9 @@ Output filenames may be specified either with or without the `.gpkg` extension. 
 
 The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ymin` (ullr style).
 
+The `-g/--grid` and `-r/--res` step values must be greater than 0.
+If `-m/--major` is used, its interval values must also be greater than 0.
+
 ### Basic example
 
 ```sh
@@ -242,3 +245,10 @@ MIT License. See the LICENSE file for details.
 
 
 
+
+## Changelog
+
+### v0.3.1
+
+* Removed `-lo/--lato` and related projection-center override handling.
+* Added CLI validation for `--grid`, `--res`, and `--major` values to require `> 0` with user-friendly argparse errors.

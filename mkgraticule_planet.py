@@ -23,7 +23,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -94,15 +94,6 @@ def get_args():
         help="Set a spatial extent of the output file",
     )
     parser.add_argument(
-        "-lo",
-        "--lato",
-        type=float,
-        metavar="lato",
-        default=None,
-        help="Force to override the latitude of origin (center) of the projection specified by -srs",
-    )
-
-    parser.add_argument(
         "-s",
         "--skipfailures",
         action="store_true",
@@ -126,6 +117,19 @@ def get_args():
     )
 
     args = parser.parse_args()
+
+    xstep, ystep = args.grid
+    xres, yres = args.res
+    for name, value in (("xstep", xstep), ("ystep", ystep), ("xres", xres), ("yres", yres)):
+        if value <= 0:
+            parser.error(f"{name} must be > 0 (got {value}).")
+
+    if args.major is not None:
+        xmajor, ymajor = args.major
+        for name, value in (("xmajor", xmajor), ("ymajor", ymajor)):
+            if value <= 0:
+                parser.error(f"{name} must be > 0 (got {value}).")
+
     return args
 
 
@@ -540,12 +544,6 @@ def main():
         center_lat, center_lon = _get_projection_center_lat_lon(t_srs_i)
         if center_lon is None:
             center_lon = 0.0
-
-    if args.lato is not None and projected:
-        try:
-            t_srs_i.SetProjParm("latitude_of_origin", float(args.lato))
-        except Exception as e:
-            print(f"WARN: failed to override latitude_of_origin with -lo {args.lato}: {e}")
 
     #########################################################################
     # Grid / extent
