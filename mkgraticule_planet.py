@@ -23,7 +23,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -94,15 +94,6 @@ def get_args():
         help="Set a spatial extent of the output file",
     )
     parser.add_argument(
-        "-lo",
-        "--lato",
-        type=float,
-        metavar="lato",
-        default=None,
-        help="Force to override the latitude of origin (center) of the projection specified by -srs",
-    )
-
-    parser.add_argument(
         "-s",
         "--skipfailures",
         action="store_true",
@@ -126,6 +117,29 @@ def get_args():
     )
 
     args = parser.parse_args()
+
+    xstep, ystep = args.grid
+    xres, yres = args.res
+    for name, value in (("xstep", xstep), ("ystep", ystep), ("xres", xres), ("yres", yres)):
+        if value <= 0:
+            parser.error(f"{name} must be > 0 (got {value}).")
+
+    if xstep > 360:
+        parser.error(f"xstep must be <= 360 (got {xstep}).")
+    if ystep > 180:
+        parser.error(f"ystep must be <= 180 (got {ystep}).")
+
+    if args.major is not None:
+        xmajor, ymajor = args.major
+        for name, value in (("xmajor", xmajor), ("ymajor", ymajor)):
+            if value <= 0:
+                parser.error(f"{name} must be > 0 (got {value}).")
+
+        if xmajor > xstep:
+            parser.error(f"xmajor must be <= xstep (got xmajor={xmajor}, xstep={xstep}).")
+        if ymajor > ystep:
+            parser.error(f"ymajor must be <= ystep (got ymajor={ymajor}, ystep={ystep}).")
+
     return args
 
 
@@ -287,6 +301,17 @@ def _is_multiple(val: float, base: float, eps: float = 1e-9) -> bool:
         return False
     k = float(val) / base
     return abs(k - round(k)) < eps
+
+
+def _is_divisible(step: float, interval: float, eps: float = 1e-9) -> bool:
+    """True if step / interval is (approximately) an integer."""
+    if interval is None:
+        return False
+    interval = float(interval)
+    if abs(interval) < eps:
+        return False
+    q = float(step) / interval
+    return abs(q - round(q)) < eps
 
 
 def _quiet_gdal_reprojection_domain_errors():
@@ -541,12 +566,6 @@ def main():
         if center_lon is None:
             center_lon = 0.0
 
-    if args.lato is not None and projected:
-        try:
-            t_srs_i.SetProjParm("latitude_of_origin", float(args.lato))
-        except Exception as e:
-            print(f"WARN: failed to override latitude_of_origin with -lo {args.lato}: {e}")
-
     #########################################################################
     # Grid / extent
     xstep, ystep = args.grid
@@ -557,6 +576,25 @@ def main():
         xmajor, ymajor = args.major
     else:
         xmajor = ymajor = None
+
+    apply_xmajor = xmajor is not None
+    apply_ymajor = ymajor is not None
+
+    if apply_xmajor and not _is_divisible(xstep, xmajor):
+        print(
+            f"WARNING: xmajor={xmajor} does not evenly divide xstep={xstep}. "
+            "grid_type will be set to NULL for longitude graticules.",
+            file=sys.stderr,
+        )
+        apply_xmajor = False
+
+    if apply_ymajor and not _is_divisible(ystep, ymajor):
+        print(
+            f"WARNING: ymajor={ymajor} does not evenly divide ystep={ystep}. "
+            "grid_type will be set to NULL for latitude graticules.",
+            file=sys.stderr,
+        )
+        apply_ymajor = False
 
     xmin = min(ulx, lrx)
     xmax = max(ulx, lrx)
@@ -758,7 +796,7 @@ def main():
         feat.SetFieldNull("lon_360")
         feat.SetFieldNull("lon_360e")
 
-        if ymajor is None:
+        if not apply_ymajor:
             feat.SetFieldNull("grid_type")
         else:
             feat.SetField("grid_type", "major" if _is_multiple(lat, ymajor) else "minor")
@@ -825,7 +863,7 @@ def main():
         feat.SetField("lon_360", lon_360_label(lon))
         feat.SetField("lon_360e", lon_360e_label(lon))
 
-        if xmajor is None:
+        if not apply_xmajor:
             feat.SetFieldNull("grid_type")
         else:
             feat.SetField("grid_type", "major" if _is_multiple(lon, xmajor) else "minor")

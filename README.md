@@ -50,6 +50,13 @@ Output filenames may be specified either with or without the `.gpkg` extension. 
 
 The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ymin` (ullr style).
 
+The `-g/--grid` and `-r/--res` step values must be greater than 0.
+Also, `xstep <= 360` and `ystep <= 180` are required.
+If `-m/--major` is used, its interval values must be greater than 0 and satisfy
+`xmajor <= xstep`, `ymajor <= ystep`.
+If `xstep` is not divisible by `xmajor` or `ystep` is not divisible by `ymajor`,
+the corresponding `grid_type` values are set to NULL and a warning is shown.
+
 ### Basic example
 
 ```sh
@@ -242,3 +249,11 @@ MIT License. See the LICENSE file for details.
 
 
 
+
+## Changelog
+
+### v0.3.1
+
+* Removed `-lo/--lato` and related projection-center override handling.
+* Strengthened CLI validation: `--grid`/`--res` require `> 0`, plus `xstep <= 360`, `ystep <= 180`; `--major` requires `> 0` and `xmajor <= xstep`, `ymajor <= ystep`.
+* When `xstep` is not divisible by `xmajor` or `ystep` is not divisible by `ymajor`, the tool now warns and sets the corresponding `grid_type` values to NULL.
