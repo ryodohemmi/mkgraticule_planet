@@ -135,10 +135,10 @@ def get_args():
             if value <= 0:
                 parser.error(f"{name} must be > 0 (got {value}).")
 
-        if xmajor > xstep:
-            parser.error(f"xmajor must be <= xstep (got xmajor={xmajor}, xstep={xstep}).")
-        if ymajor > ystep:
-            parser.error(f"ymajor must be <= ystep (got ymajor={ymajor}, ystep={ystep}).")
+        if xstep > xmajor:
+            parser.error(f"xstep must be <= xmajor (got xstep={xstep}, xmajor={xmajor}).")
+        if ystep > ymajor:
+            parser.error(f"ystep must be <= ymajor (got ystep={ystep}, ymajor={ymajor}).")
 
     return args
 
@@ -301,17 +301,6 @@ def _is_multiple(val: float, base: float, eps: float = 1e-9) -> bool:
         return False
     k = float(val) / base
     return abs(k - round(k)) < eps
-
-
-def _is_divisible(step: float, interval: float, eps: float = 1e-9) -> bool:
-    """True if step / interval is (approximately) an integer."""
-    if interval is None:
-        return False
-    interval = float(interval)
-    if abs(interval) < eps:
-        return False
-    q = float(step) / interval
-    return abs(q - round(q)) < eps
 
 
 def _quiet_gdal_reprojection_domain_errors():
@@ -577,25 +566,6 @@ def main():
     else:
         xmajor = ymajor = None
 
-    apply_xmajor = xmajor is not None
-    apply_ymajor = ymajor is not None
-
-    if apply_xmajor and not _is_divisible(xstep, xmajor):
-        print(
-            f"WARNING: xmajor={xmajor} does not evenly divide xstep={xstep}. "
-            "grid_type will be set to NULL for longitude graticules.",
-            file=sys.stderr,
-        )
-        apply_xmajor = False
-
-    if apply_ymajor and not _is_divisible(ystep, ymajor):
-        print(
-            f"WARNING: ymajor={ymajor} does not evenly divide ystep={ystep}. "
-            "grid_type will be set to NULL for latitude graticules.",
-            file=sys.stderr,
-        )
-        apply_ymajor = False
-
     xmin = min(ulx, lrx)
     xmax = max(ulx, lrx)
     ymin = min(lry, uly)
@@ -796,7 +766,7 @@ def main():
         feat.SetFieldNull("lon_360")
         feat.SetFieldNull("lon_360e")
 
-        if not apply_ymajor:
+        if ymajor is None:
             feat.SetFieldNull("grid_type")
         else:
             feat.SetField("grid_type", "major" if _is_multiple(lat, ymajor) else "minor")
@@ -863,7 +833,7 @@ def main():
         feat.SetField("lon_360", lon_360_label(lon))
         feat.SetField("lon_360e", lon_360e_label(lon))
 
-        if not apply_xmajor:
+        if xmajor is None:
             feat.SetFieldNull("grid_type")
         else:
             feat.SetField("grid_type", "major" if _is_multiple(lon, xmajor) else "minor")
