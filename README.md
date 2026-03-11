@@ -52,8 +52,10 @@ The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ym
 
 The `-g/--grid` and `-r/--res` step values must be greater than 0.
 Also, `xstep <= 360` and `ystep <= 180` are required.
-If `-m/--major` is used, its interval values must be greater than 0 and satisfy
-`xstep <= xmajor`, `ystep <= ymajor`.
+If `-m/--major` is used, its interval values must be greater than 0.
+To classify major/minor, `xmajor` and `ymajor` must each be natural-number multiples
+of `xgrid(xstep)` and `ygrid(ystep)` respectively (e.g. `xstep=5` → `xmajor=5,10,15,...`).
+If not, the corresponding `grid_type` remains NULL and an informational message is shown.
 
 ### Basic example
 
@@ -205,7 +207,7 @@ python mkgraticule_planet.py -srs ESRI:54009 \
 | lon_ew     | longitude label (180°W … 180°E) |
 | lon_360    | longitude label (0° … 360°) |
 | lon_360e   | longitude label (0°E … 360°E) |
-| grid_type  | `"major"` / `"minor"` when `--major` is used (otherwise NULL) |
+| grid_type  | `"major"` / `"minor"` when `--major` is validly applicable; otherwise NULL |
 
 ### Companion point layer (`*_points`)
 
@@ -253,4 +255,5 @@ MIT License. See the LICENSE file for details.
 ### v0.3.1
 
 * Removed `-lo/--lato` and related projection-center override handling.
-* Strengthened CLI validation: `--grid`/`--res` require `> 0`, plus `xstep <= 360`, `ystep <= 180`; `--major` requires `> 0` and `xstep <= xmajor`, `ystep <= ymajor`.
+* Strengthened CLI validation: `--grid`/`--res` require `> 0`, plus `xstep <= 360`, `ystep <= 180`; `--major` values require `> 0`.
+* `xmajor`/`ymajor` are applied only when each is a natural-number multiple of `xstep`/`ystep`; otherwise corresponding `grid_type` remains NULL and an info message is shown.
