@@ -45,6 +45,10 @@ Otherwise, one simple way to install the required GDAL Python bindings is:
 conda install gdal
 ```
 
+## Design notes
+
+For the rationale behind the graticule-generation workflow and a comparison with QGIS-native projected-grid tools and `sf::st_graticule()`, see [docs/design/comparison-with-qgis-and-sf.md](docs/design/comparison-with-qgis-and-sf.md).
+
 ## Usage
 Output filenames may be specified either with or without the `.gpkg` extension. If the extension is omitted, it is added automatically.
 
