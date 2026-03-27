@@ -23,7 +23,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -40,11 +40,14 @@ import os
 import sys
 import argparse
 import sqlite3
+import re
 import numpy as np
 
+class CustomFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter, argparse.MetavarTypeHelpFormatter):
+    pass
 
 def get_args():
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(formatter_class=CustomFormatter)
 
     parser.add_argument("-v", "--version", action="version", version=__version__)
     parser.add_argument("outfile", type=str, help="Set the output filename")
@@ -74,15 +77,17 @@ def get_args():
         nargs=2,
         metavar=("xmajor", "ymajor"),
         default=None,
-        help="Major graticule interval [xmajor ymajor] in degrees. "
-             "If set, grid_type will be 'major' or 'minor'. If omitted, grid_type is NULL.",
+        help="Major graticule interval [xmajor ymajor] in degrees.\
+            \nIf set, grid_type will be 'major' or 'minor'.\
+            \nIf omitted, grid_type is NULL.",
     )
     parser.add_argument(
         "-srs",
         "--srs",
         type=str,
         default="IAU_2015:30100",
-        help="Set target spatial reference (IAU code or *.prj file). See https://spatialreference.org/",
+        help="Set target spatial reference (IAU code or *.prj file).\
+            \nSee https://spatialreference.org/",
     )
     parser.add_argument(
         "-e",
@@ -104,16 +109,47 @@ def get_args():
         "-p",
         "--partial-reprojection",
         action="store_true",
-        help="Enable partial reprojection (OGR_ENABLE_PARTIAL_REPROJECTION=TRUE). "
-             "May output truncated/split geometries near projection domain limits.",
+        help="Enable partial reprojection (OGR_ENABLE_PARTIAL_REPROJECTION=TRUE).\
+            \nMay output truncated/split geometries near projection domain limits.",
     )
 
     parser.add_argument(
         "-nde",
         "--no-duplicate-endpoint",
         action="store_true",
-        help="Drop the duplicate endpoint meridian when the longitude span is ~360 degrees "
-            "(e.g., keep -180 and drop 180, or keep 0 and drop 360).",
+        help="Drop the duplicate endpoint meridian when the longitude span is ~360 degrees\
+            \n(e.g., keep -180 and drop 180, or keep 0 and drop 360).",
+    )
+
+    parser.add_argument(
+        "-l",
+        "--layer",
+        type=str,
+        default=None,
+        help="Set output layer name explicitly.\
+            \nIf not set, use the basename of outfile without extension instead.",
+    )
+    parser.add_argument(
+        "-lo",
+        "--lat-orig",
+        type=float,
+        default=None,
+        help="Overwrite latitude of origin / false origin / natural origin in the target projected CRS (degrees).",
+    )
+    parser.add_argument(
+        "-ls",
+        "--lat-sp",
+        type=float,
+        default=None,
+        help="Overwrite standard parallel in the target projected CRS.\
+            \nFor 2SP projections, this overwrites the 1st standard parallel (degrees).",
+    )
+    parser.add_argument(
+        "-ls2",
+        "--lat-sp2",
+        type=float,
+        default=None,
+        help="Overwrite the 2nd standard parallel in the target projected CRS (degrees).",
     )
 
     args = parser.parse_args()
@@ -128,6 +164,16 @@ def get_args():
         parser.error(f"xstep must be <= 360 (got {xstep}).")
     if ystep > 180:
         parser.error(f"ystep must be <= 180 (got {ystep}).")
+
+    ulx, uly, lrx, lry = args.extent
+    if ulx >= lrx:
+        parser.error(f"extent requires ulx < lrx (got ulx={ulx}, lrx={lrx}).")
+    if uly <= lry:
+        parser.error(f"extent requires uly > lry (got uly={uly}, lry={lry}).")
+
+    for name, value in (("lat-orig", args.lat_orig), ("lat-sp", args.lat_sp), ("lat-sp2", args.lat_sp2)):
+        if value is not None and not (-90.0 <= value <= 90.0):
+            parser.error(f"{name} must be within [-90, 90] degrees (got {value}).")
 
     if args.major is not None:
         xmajor, ymajor = args.major
@@ -170,6 +216,26 @@ def export_wkt2_2019(srs: osr.SpatialReference) -> str:
             return srs.ExportToWkt(["format=wkt2"])
         except Exception:
             return srs.ExportToWkt()
+
+def export_pretty_wkt(srs: osr.SpatialReference) -> str:
+    """
+    Return a human-readable WKT string for console output.
+    Prefer GDAL/OSR's pretty exporter so this works without pyproj.
+    """
+    try:
+        pretty = srs.ExportToPrettyWkt(0)
+        if pretty:
+            return pretty
+    except Exception:
+        pass
+
+    wkt = export_wkt2_2019(srs)
+
+    try:
+        import pyproj
+        return pyproj.CRS.from_wkt(wkt).to_wkt(pretty=True)
+    except Exception:
+        return wkt
 
 
 def update_gpkg_spatial_ref_sys_with_wkt2_2019(gpkg_path: str, srs: osr.SpatialReference) -> None:
@@ -324,16 +390,129 @@ def _quiet_gdal_reprojection_domain_errors():
 
     return handler
 
+def _list_wkt_parameter_names(wkt: str):
+    return re.findall(r'PARAMETER\["([^"]+)"', wkt)
+
+
+def _replace_wkt_parameter_value(wkt: str, param_names, new_value: float):
+    new_value_text = f"{float(new_value):.15g}"
+
+    for param_name in param_names:
+        pattern = re.compile(
+            r'(PARAMETER\["' + re.escape(param_name) + r'",)([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)',
+            re.UNICODE,
+        )
+        if pattern.search(wkt):
+            return pattern.sub(r'\1' + new_value_text, wkt, count=1), param_name
+
+    return wkt, None
+
+
+def _strip_root_authority_from_wkt(wkt: str) -> str:
+    return re.sub(r',ID\[[^\]]+\](?=\s*\]\s*$)', '', wkt, count=1)
+
+
+def _override_projection_latitude_parameters(srs, lat_orig=None, lat_sp=None, lat_sp2=None):
+    if lat_orig is None and lat_sp is None and lat_sp2 is None:
+        return srs, {}
+
+    try:
+        wkt = srs.ExportToWkt(["format=wkt2_2019"])
+    except Exception:
+        try:
+            wkt = srs.ExportToWkt(["format=wkt2"])
+        except Exception:
+            wkt = srs.ExportToWkt()
+
+    available = _list_wkt_parameter_names(wkt)
+    applied = {}
+
+    parameter_specs = [
+        (
+            "lat_orig",
+            lat_orig,
+            [
+                ("Latitude of false origin", "latitude_of_origin"),
+                ("Latitude of natural origin", "latitude_of_origin"),
+                ("Latitude of origin", "latitude_of_origin"),
+                ("Latitude of true origin", "latitude_of_origin"),
+                ("Latitude of center", "latitude_of_center"),
+                ("Latitude of projection centre", "latitude_of_center"),
+                ("Latitude of projection center", "latitude_of_center"),
+            ],
+        ),
+        (
+            "lat_sp",
+            lat_sp,
+            [
+                ("Latitude of 1st standard parallel", "standard_parallel_1"),
+                ("Latitude of standard parallel", "standard_parallel_1"),
+                ("Standard parallel 1", "standard_parallel_1"),
+            ],
+        ),
+        (
+            "lat_sp2",
+            lat_sp2,
+            [
+                ("Latitude of 2nd standard parallel", "standard_parallel_2"),
+                ("Standard parallel 2", "standard_parallel_2"),
+            ],
+        ),
+    ]
+
+    srs_new = srs.Clone()
+    if hasattr(osr, "OAMS_TRADITIONAL_GIS_ORDER"):
+        srs_new.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+
+    for key, value, candidates in parameter_specs:
+        if value is None:
+            continue
+
+        matched_wkt_name = None
+        matched_proj_key = None
+        for wkt_name, proj_key in candidates:
+            if wkt_name in available:
+                matched_wkt_name = wkt_name
+                matched_proj_key = proj_key
+                break
+
+        if matched_wkt_name is None or matched_proj_key is None:
+            raise RuntimeError(
+                f"Requested --{key.replace('_', '-')} override, but the target CRS does not expose a compatible parameter. "
+                f"Available WKT parameter names: {', '.join(available) if available else 'none'}"
+            )
+
+        srs_new.SetNormProjParm(matched_proj_key, float(value))
+        applied[key] = matched_wkt_name
+
+    return srs_new, applied
+
+
+def _srs_id_label(srs: osr.SpatialReference) -> str:
+    auth_name = srs.GetAuthorityName(None)
+    auth_code = srs.GetAuthorityCode(None)
+    if auth_name and auth_code:
+        return f"{auth_name}:{auth_code}"
+
+    try:
+        name = srs.GetName()
+    except Exception:
+        name = None
+
+    return name or "custom CRS"
+
 def _get_projection_center_lat_lon(srs: osr.SpatialReference):
     """
     Return (center_lat, center_lon) from common projection parameters, if available.
     """
     lat_keys = [
+        "latitude_of_false_origin",
         "latitude_of_origin",
         "latitude_of_center",
         "latitude_of_natural_origin",
     ]
     lon_keys = [
+        "longitude_of_false_origin",
         "central_meridian",
         "longitude_of_center",
         "longitude_of_origin",
@@ -425,7 +604,7 @@ def _ensure_point_layer(ds_mem, point_layer, point_layer_name, srs_target):
     if point_layer is None:
         raise RuntimeError("Failed to create in-memory point layer.")
 
-    field_defn = ogr.FieldDefn("fid", ogr.OFTInteger)
+    field_defn = ogr.FieldDefn("row_no", ogr.OFTInteger)
     point_layer.CreateField(field_defn)
 
     field_lat = ogr.FieldDefn("lat", ogr.OFTReal)
@@ -450,7 +629,7 @@ def _ensure_point_layer(ds_mem, point_layer, point_layer_name, srs_target):
 
 def _add_projection_center_point(
     point_layer,
-    fid,
+    row,
     center_lat,
     center_lon,
     center_target_xy,
@@ -461,7 +640,7 @@ def _add_projection_center_point(
     """
     feat = ogr.Feature(point_layer.GetLayerDefn())
 
-    feat.SetField("fid", int(fid))
+    feat.SetField("row_no", int(row))
 
     if center_lat is None:
         feat.SetFieldNull("lat")
@@ -540,6 +719,18 @@ def main():
     # Force traditional GIS axis order (x=lon, y=lat) for manual transformations
     if hasattr(osr, "OAMS_TRADITIONAL_GIS_ORDER"):
         t_srs_i.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+
+    overrides_requested = any(v is not None for v in (args.lat_orig, args.lat_sp, args.lat_sp2))
+    applied_overrides = {}
+    if overrides_requested:
+        if t_srs_i.IsGeographic() == 1:
+            raise RuntimeError("--lat-orig/--lat-sp/--lat-sp2 require a projected target CRS.")
+        t_srs_i, applied_overrides = _override_projection_latitude_parameters(
+            t_srs_i,
+            lat_orig=args.lat_orig,
+            lat_sp=args.lat_sp,
+            lat_sp2=args.lat_sp2,
+        )
 
     if t_srs_i.IsGeographic() == 1:
         projected = False
@@ -638,7 +829,10 @@ def main():
 
     #########################################################################
     # Create Layer in memory
-    layer_name = os.path.splitext(os.path.basename(outfile))[0]
+    if args.layer is not None:
+        layer_name = args.layer
+    else:
+        layer_name = os.path.splitext(os.path.basename(outfile))[0]
 
     point_layer = None
     point_layer_name = f"{layer_name}_points"
@@ -663,18 +857,12 @@ def main():
         raise RuntimeError("Failed to create in-memory layer.")
 
     # Print SRS (geographic base)
-    wkt_string = t_srs_geog.ExportToWkt(["format=wkt2"])
-    try:
-        import pyproj
-        pretty_wkt = pyproj.CRS.from_wkt(wkt_string).to_wkt(pretty=True)
-        print(pretty_wkt)
-    except ImportError:
-        print(wkt_string)
+    print(export_pretty_wkt(t_srs_geog))
 
     print("=" * terminal_width)
 
     # Field definition
-    field_defn = ogr.FieldDefn("fid", ogr.OFTInteger)
+    field_defn = ogr.FieldDefn("row_no", ogr.OFTInteger)
     layer.CreateField(field_defn)
 
     field_lat = ogr.FieldDefn("lat", ogr.OFTReal)
@@ -697,7 +885,7 @@ def main():
 
     #########################################################################
     # Create features: latitude lines
-    fid = 0
+    row = 1
     for i, lat in enumerate(latitudes):
         progress_bar(i, latitudes, "Processing Latitudes: ")
 
@@ -735,7 +923,7 @@ def main():
             pt.AddPoint(float(collapsed_target_xy[0]), float(collapsed_target_xy[1]))
 
             feat = ogr.Feature(point_layer.GetLayerDefn())
-            feat.SetField("fid", int(fid))
+            feat.SetField("row_no", int(row))
             feat.SetField("lat", float(lat))
             feat.SetFieldNull("lon")
 
@@ -753,7 +941,7 @@ def main():
             point_layer.CreateFeature(feat)
             
             feat = None
-            fid += 1
+            row += 1
             continue
 
         line = ogr.Geometry(ogr.wkbLineString)
@@ -761,7 +949,7 @@ def main():
             line.AddPoint(float(lon), float(lat))
 
         feat = ogr.Feature(layer.GetLayerDefn())
-        feat.SetField("fid", int(fid))
+        feat.SetField("row_no", int(row))
         feat.SetField("lat", float(lat))
         feat.SetFieldNull("lon")
 
@@ -781,7 +969,7 @@ def main():
         feat.SetGeometry(line)
         layer.CreateFeature(feat)
         feat = None
-        fid += 1
+        row += 1
 
     sys.stdout.write("\n")
 
@@ -804,7 +992,7 @@ def main():
             pt.AddPoint(float(collapsed_target_xy[0]), float(collapsed_target_xy[1]))
 
             feat = ogr.Feature(point_layer.GetLayerDefn())
-            feat.SetField("fid", int(fid))
+            feat.SetField("row_no", int(row))
             feat.SetFieldNull("lat")
             feat.SetField("lon", float(lon))
 
@@ -820,7 +1008,7 @@ def main():
             feat.SetGeometry(pt)
             point_layer.CreateFeature(feat)
             feat = None
-            fid += 1
+            row += 1
             continue
 
         line = ogr.Geometry(ogr.wkbLineString)
@@ -828,7 +1016,7 @@ def main():
             line.AddPoint(float(lon), float(lat))
 
         feat = ogr.Feature(layer.GetLayerDefn())
-        feat.SetField("fid", int(fid))
+        feat.SetField("row_no", int(row))
         feat.SetFieldNull("lat")
         feat.SetField("lon", float(lon))
 
@@ -848,7 +1036,7 @@ def main():
         feat.SetGeometry(line)
         layer.CreateFeature(feat)
         feat = None
-        fid += 1
+        row += 1
 
     sys.stdout.write("\n")
 
@@ -876,12 +1064,12 @@ def main():
             if not duplicate_center:
                 _add_projection_center_point(
                     point_layer=point_layer,
-                    fid=fid,
+                    row=int(1),
                     center_lat=center_lat,
                     center_lon=center_lon,
                     center_target_xy=center_target_xy,
                 )
-                fid += 1
+                row += 1
 
     #########################################################################
     # Write GeoPackage
@@ -889,20 +1077,23 @@ def main():
     if projected:
         print(
             f"Reprojection (on export): "
-            f"{t_srs_geog.GetAuthorityName(None)}:{t_srs_geog.GetAuthorityCode(None)} "
-            f"=> {t_srs_i.GetAuthorityName(None)}:{t_srs_i.GetAuthorityCode(None)}\n"
+            f"{_srs_id_label(t_srs_geog)} "
+            f"=> {('custom CRS' if applied_overrides else _srs_id_label(t_srs_i))}\n"
         )
-        wkt_string2 = t_srs_i.ExportToWkt(["format=wkt2"])
-        try:
-            import pyproj
-            pretty_wkt2 = pyproj.CRS.from_wkt(wkt_string2).to_wkt(pretty=True)
-            print(pretty_wkt2)
-        except ImportError:
-            print(wkt_string2)
+        if applied_overrides:
+            override_parts = []
+            if args.lat_orig is not None:
+                override_parts.append(f"lat_orig={args.lat_orig}")
+            if args.lat_sp is not None:
+                override_parts.append(f"lat_sp={args.lat_sp}")
+            if args.lat_sp2 is not None:
+                override_parts.append(f"lat_sp2={args.lat_sp2}")
+            print("Projection parameter overrides: " + ", ".join(override_parts) + "\n")
+        print(export_pretty_wkt(t_srs_i))
     else:
         print(
             f"Export (no reprojection): "
-            f"{t_srs_i.GetAuthorityName(None)}:{t_srs_i.GetAuthorityCode(None)}\n"
+            f"{_srs_id_label(t_srs_i)}\n"
         )
 
     vt_opts = gdal.VectorTranslateOptions(
@@ -987,7 +1178,16 @@ def main():
             )
 
     # Add WKT2_2019 into gpkg_spatial_ref_sys.definition_12_063
-    update_gpkg_spatial_ref_sys_with_wkt2_2019(outfile, t_srs_i)
+    if applied_overrides:
+        print("WARN: CRS parameter overrides were applied; skip gpkg_spatial_ref_sys.definition_12_063 update.")
+    else:
+        update_gpkg_spatial_ref_sys_with_wkt2_2019(outfile, t_srs_i)
+
+    print("=" * terminal_width)
+    print(f"Output: {outfile}")
+    print(f"Lat grids: {len(latitudes)}")
+    print(f"Lon grids: {len(longitudes)}")
+    print(f"Points: {point_layer.GetFeatureCount() if point_layer is not None else 0}")
 
     #########################################################################
     # Cleanup
