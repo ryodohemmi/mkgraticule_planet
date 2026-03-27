@@ -4,11 +4,22 @@ Create planetary graticules for **IAU coordinate systems** and export them as **
 
 A small CLI utility for generating latitude/longitude grids for planetary bodies using **IAU 2015 planetary coordinate systems**.
 
+Currently, two CLI implementations are available:
+
+* **Python / GDAL**: [`mkgraticule_planet.py`](/python/mkgraticule_planet.py)
+* **R / sf**: [`mkgraticule_planet.R`](/r/mkgraticule_planet.R)
+
+## Why two implementations?
+
+- Python version for [GDAL](https://github.com/OSGeo/gdal)-centric workflows
+- R version for [sf (Simple Features for R)](https://github.com/r-spatial/sf/)-centric workflows
+
 ## Features
 
 * Supports **IAU 2015 planetary coordinate systems**
 * GeoPackage output
 * Compatible with **GDAL 3.x**
+* Available as both **GDAL Python** and **R sf** implementations
 * Multiple graticule label styles
 * QGIS-friendly output suitable for map production: label fields allow immediate graticule labeling, and CRS metadata ([`definition_12_063`](https://www.geopackage.org/spec/#gpkg_spatial_ref_sys_cols_crs_wkt)) ensures that IAU coordinate systems are correctly recognized when the GeoPackage is loaded in QGIS.
 * Optional major/minor classification via `-m/--major` (`grid_type = major|minor`, otherwise NULL)
@@ -35,6 +46,8 @@ Longitude labels:
 
 ## Requirements
 
+### Python implementation
+
 Python with GDAL Python bindings.
 
 If you are using the OSGeo4W shell bundled with QGIS, GDAL is usually already available, so `conda install gdal` is not required.
@@ -42,20 +55,38 @@ If you are using the OSGeo4W shell bundled with QGIS, GDAL is usually already av
 Otherwise, one simple way to install the required GDAL Python bindings is:
 
 ```sh
-conda install gdal
+conda create -n gdal -c conda-forge gdal
+conda activate gdal
 ```
+
+### R implementation
+
+R with `sf`, `DBI`, and `RSQLite`.
+
+```sh
+conda create -n rsf -c conda-forge r-base r-sf r-rsqlite r-dbi
+conda activate rsf
+```
+
+For a compact summary of conda download size and post-install environment size for both implementations, see [docs/setup/conda-env-size-summary-2026-03-17.md](docs/setup/conda-env-size-summary-2026-03-17.md).
 
 ## Design notes
 
 For the rationale behind the graticule-generation workflow and a comparison with QGIS-native projected-grid tools and `sf::st_graticule()`, see [docs/design/comparison-with-qgis-and-sf.md](docs/design/comparison-with-qgis-and-sf.md).
 
 ## Usage
+
+Before running the commands below, move into the corresponding implementation directory:
+
+- `python/` for the Python / GDAL implementation
+- `r/` for the R / sf implementation
+
 Output filenames may be specified either with or without the `.gpkg` extension. If the extension is omitted, it is added automatically.
 
-The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ymin` (ullr style).
+The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ymin` ("ullr" style).
 
 ### Basic example
-
+#### Python / GDAL
 ```sh
 # Moon
 python mkgraticule_planet.py -g 10 10 \
@@ -70,8 +101,23 @@ python mkgraticule_planet.py -g 15 15 \
                              -srs IAU_2015:49900 \
                              mars_graticule.gpkg
 ```
-### Major/minor graticules
+#### R / sf
+```sh
+# Moon
+Rscript mkgraticule_planet.R -g 10 10 \
+                             -r 0.2 0.2 \
+                             -srs IAU_2015:30100 \
+                             -e -180 90 180 -90 \
+                             moon_graticule.gpkg
 
+# Mars
+Rscript mkgraticule_planet.R -g 15 15 \
+                             -r 0.5 0.5 \
+                             -srs IAU_2015:49900 \
+                             mars_graticule.gpkg
+```
+### Major/minor graticules
+#### Python / GDAL
 ```sh
 python mkgraticule_planet.py -g 10 10 \
                              -m 30 30 \
@@ -81,6 +127,14 @@ python mkgraticule_planet.py -g 10 10 \
 ```
 If `-m/--major` is set: `grid_type` will be `"major"` or `"minor"`.
 If omitted: `grid_type` is NULL.
+#### R / sf
+```sh
+Rscript mkgraticule_planet.R -g 10 10 \
+                             -m 30 30 \
+                             -srs IAU_2015:40100 \
+                             -e -180 90 180 -90 \
+                             phobos_graticule.gpkg
+```
 
 ## Projected CRS considerations
 
@@ -227,6 +281,8 @@ This project is based on the GDAL sample script:
 
 https://github.com/OSGeo/gdal/blob/master/swig/python/gdal-utils/osgeo_utils/samples/mkgraticule.py
 
+The R implementation was developed as an `sf`-based companion workflow for the same `mkgraticule_planet` concept.
+
 ## Citation
 
 If you use this software in your research, please cite:
@@ -236,4 +292,4 @@ https://doi.org/10.5281/zenodo.18864189
 
 ## License
 
-MIT License. See the LICENSE file for details.
+Apache-2.0 License. See [LICENSE](/LICENSE) for details.
