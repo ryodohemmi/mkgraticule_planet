@@ -1112,10 +1112,6 @@ if (length(line_rows) == 0L) {
   stop("No line features were generated.")
 }
 
-if (length(line_rows) == 0L) {
-  stop("No line features were generated.")
-}
-
 grat_ll <- st_sf(
   do.call(rbind, line_rows),
   geometry = st_sfc(line_geoms, crs = crs_geo)
