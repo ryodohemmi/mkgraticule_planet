@@ -44,19 +44,40 @@ Longitude labels:
 * `lon_360` → 0° to 360°
 * `lon_360e` → 0°E to 360°E
 
-## Requirements
+## Installation
 
 ### Python implementation
 
-Python with GDAL Python bindings.
-
-If you are using the OSGeo4W shell bundled with QGIS, GDAL is usually already available, so `conda install gdal` is not required.
-
-Otherwise, one simple way to install the required GDAL Python bindings is:
+#### Option 1: pip install (recommended for pip users)
 
 ```sh
-conda create -n gdal -c conda-forge gdal
+pip install mkgraticule_planet
+```
+
+> **Note:** The GDAL Python bindings require a working GDAL C library.
+> If `pip install` fails for the GDAL dependency, install GDAL separately first
+> (e.g. via conda or your system package manager) and then retry.
+
+#### Option 2: conda install (recommended — handles GDAL automatically)
+
+```sh
+conda install -c conda-forge mkgraticule_planet
+```
+
+#### Option 3: conda environment + pip (from source)
+
+```sh
+conda create -n gdal -c conda-forge gdal numpy
 conda activate gdal
+pip install -e .
+```
+
+#### Option 4: OSGeo4W (QGIS users on Windows)
+
+If you are using the OSGeo4W shell bundled with QGIS, GDAL is usually already available. Clone the repository and run the script directly:
+
+```sh
+python python/mkgraticule_planet.py --help
 ```
 
 ### R implementation
@@ -76,7 +97,19 @@ For the rationale behind the graticule-generation workflow and a comparison with
 
 ## Usage
 
-Before running the commands below, move into the corresponding implementation directory:
+If installed via `pip install` or `conda install`, the `mkgraticule_planet` command is available directly:
+
+```sh
+mkgraticule_planet --help
+```
+
+You can also run via `python -m`:
+
+```sh
+python -m mkgraticule_planet --help
+```
+
+When running from a cloned repository without installing, move into the corresponding implementation directory:
 
 - `python/` for the Python / GDAL implementation
 - `r/` for the R / sf implementation
