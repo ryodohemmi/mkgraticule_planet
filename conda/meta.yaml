@@ -1,0 +1,44 @@
+{% set name = "mkgraticule_planet" %}
+{% set version = "0.5.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
+  # sha256: fill after first PyPI upload
+
+build:
+  noarch: python
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  entry_points:
+    - mkgraticule_planet = mkgraticule_planet._cli:main
+
+requirements:
+  host:
+    - python >=3.9
+    - pip
+    - setuptools >=68.0
+  run:
+    - python >=3.9
+    - numpy
+    - gdal
+
+test:
+  imports:
+    - mkgraticule_planet
+  commands:
+    - mkgraticule_planet --version
+    - mkgraticule_planet --help
+
+about:
+  home: https://github.com/ryodohemmi/mkgraticule_planet
+  summary: Create planetary graticules for IAU coordinate systems and export as GeoPackage
+  license: Apache-2.0
+  license_file: LICENSE
+
+extra:
+  recipe-maintainers:
+    - ryodohemmi
