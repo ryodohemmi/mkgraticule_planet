@@ -6,8 +6,8 @@ package:
   version: {{ version }}
 
 source:
-  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
-  # sha256: fill after first PyPI upload
+  url: https://github.com/ryodohemmi/{{ name }}/archive/refs/tags/v{{ version }}.tar.gz
+  sha256: cfa57c7dd7a0b61272989c1de40870bc8cd13bb8a012d1cbd776233cd2957fd1
 
 build:
   noarch: python
