@@ -23,7 +23,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -127,7 +127,7 @@ def get_args():
         type=str,
         default=None,
         help="Set output layer name explicitly.\
-            \nIf not set, use the basename of outfile without extension instead.",
+            \nIf not set, defaults to 'grid' (points layer: 'point').",
     )
     parser.add_argument(
         "-lo",
@@ -519,22 +519,21 @@ def _get_projection_center_lat_lon(srs: osr.SpatialReference):
         "longitude_of_natural_origin",
     ]
 
+    _SENTINEL = float('inf')
     center_lat = None
     center_lon = None
 
     for key in lat_keys:
-        try:
-            center_lat = float(srs.GetProjParm(key))
+        val = srs.GetProjParm(key, _SENTINEL)
+        if val != _SENTINEL:
+            center_lat = float(val)
             break
-        except Exception:
-            pass
 
     for key in lon_keys:
-        try:
-            center_lon = float(srs.GetProjParm(key))
+        val = srs.GetProjParm(key, _SENTINEL)
+        if val != _SENTINEL:
+            center_lon = float(val)
             break
-        except Exception:
-            pass
 
     return center_lat, center_lon
 
@@ -831,11 +830,12 @@ def main():
     # Create Layer in memory
     if args.layer is not None:
         layer_name = args.layer
+        point_layer_name = f"{layer_name}_point"
     else:
-        layer_name = os.path.splitext(os.path.basename(outfile))[0]
+        layer_name = "grid"
+        point_layer_name = "point"
 
     point_layer = None
-    point_layer_name = f"{layer_name}_points"
 
     ct_to_target = None
     if projected:
@@ -1062,11 +1062,12 @@ def main():
                 point_layer.ResetReading()
 
             if not duplicate_center:
+                is_pole = center_lat is not None and abs(abs(center_lat) - 90) <= 1e-9
                 _add_projection_center_point(
                     point_layer=point_layer,
                     row=int(1),
                     center_lat=center_lat,
-                    center_lon=center_lon,
+                    center_lon=None if is_pole else center_lon,
                     center_target_xy=center_target_xy,
                 )
                 row += 1
