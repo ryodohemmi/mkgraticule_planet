@@ -26,6 +26,7 @@ Currently, two CLI implementations are available:
 * Safer handling for projected CRS with limited domains:
   * abort on projected + near-global extent unless `-s/--skipfailures` is used
   * optional `-p/--partial-reprojection` for partial output near projection-domain limits
+* Override Lambert Conic Conformal projection parameters via `-lo` (latitude of origin), `-ls` (1st standard parallel), and `-ls2` (2nd standard parallel), allowing customization of the IAU defaults (0°, 20°, 60°)
 * Optional endpoint de-duplication for 360° longitude spans: `-nde/--no-duplicate-endpoint`
 * Automatic companion point layer (`*_points`) for projected CRS:
   * collapsed graticule features at projection singularities
