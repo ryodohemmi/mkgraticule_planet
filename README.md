@@ -49,13 +49,15 @@ Longitude labels:
 
 ### Python implementation
 
-#### Option 1: conda install (recommended)
+#### Option 1: conda install (recommended, under review)
 
 ```sh
 conda install -c conda-forge mkgraticule_planet
 ```
 
-> **Note:** GDAL does not provide pre-built wheels on PyPI, so `pip install` cannot
+> **Note:** This package is currently under review for inclusion in conda-forge.
+> The command above will be available once the review is complete.
+> GDAL does not provide pre-built wheels on PyPI, so `pip install` cannot
 > resolve the GDAL dependency reliably. Installing via conda is recommended.
 
 #### Option 2: OSGeo4W (QGIS users on Windows)
