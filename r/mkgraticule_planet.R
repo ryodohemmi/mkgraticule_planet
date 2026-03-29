@@ -12,7 +12,7 @@ args <- commandArgs(trailingOnly = TRUE)
 usage <- function(status = 0) {
   cat(paste0(
     "mkgraticule_planet.R\n",
-    "Create planetary graticules for IAU coordinate systems and export them as GeoPackage.\n\n",
+    "Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as QGIS-friendly GeoPackage.\n\n",
     "Usage:\n",
     "  Rscript mkgraticule_planet.R \\\n",
     "    -srs IAU_2015:30135 \\\n",

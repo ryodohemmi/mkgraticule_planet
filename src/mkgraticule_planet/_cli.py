@@ -4,7 +4,7 @@
 """
 mkgraticule_planet.py
 
-Create planetary graticules for IAU coordinate systems and export them as GeoPackage.
+Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as QGIS-friendly GeoPackage.
 
 Based on the GDAL sample script mkgraticule.py
 https://github.com/OSGeo/gdal/blob/master/swig/python/gdal-utils/osgeo_utils/samples/mkgraticule.py
