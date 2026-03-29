@@ -6,8 +6,8 @@ A small CLI utility for generating latitude/longitude grids for planetary bodies
 
 Currently, two CLI implementations are available:
 
-* **Python / GDAL**: [`mkgraticule_planet.py`](/python/mkgraticule_planet.py)
-* **R / sf**: [`mkgraticule_planet.R`](/r/mkgraticule_planet.R)
+* **Python / GDAL**: [`mkgraticule_planet.py`](/standalone/mkgraticule_planet.py)
+* **R / sf**: [`mkgraticule_planet.R`](/standalone/mkgraticule_planet.R)
 
 ## Why two implementations?
 
@@ -28,7 +28,7 @@ Currently, two CLI implementations are available:
   * optional `-p/--partial-reprojection` for partial output near projection-domain limits
 * Override Lambert Conic Conformal projection parameters via `-lo` (latitude of origin), `-ls` (1st standard parallel), and `-ls2` (2nd standard parallel), allowing customization of the IAU defaults (0°, 20°, 60°)
 * Optional endpoint de-duplication for 360° longitude spans: `-nde/--no-duplicate-endpoint`
-* Automatic companion point layer (`*_points`) for projected CRS:
+* Automatic companion point layer (`point`) for projected CRS:
   * collapsed graticule features at projection singularities
   * projection-center label points
 * Point-role classification in the companion point layer via `point_role` (`collapsed` / `center`)
@@ -49,7 +49,48 @@ Longitude labels:
 
 ### Python implementation
 
-#### Option 1: conda install (recommended, under review)
+#### Option 1: Use standalone scripts directly (best recommended)
+
+The [`standalone/`](/standalone/) directory contains self-contained single-file scripts for both Python and R. No package installation is required -- just download or clone and run.
+
+These work in any environment where GDAL (Python) or sf (R) is already available:
+
+- **Your existing conda environment** with `gdal` (Python) or `r-base r-sf r-rsqlite r-dbi` (R)
+- **OSGeo4W Shell** bundled with QGIS (GDAL is pre-installed)
+- Any other setup with the required libraries
+
+```sh
+# Clone and run
+git clone https://github.com/ryodohemmi/mkgraticule_planet.git
+python standalone/mkgraticule_planet.py --help
+Rscript standalone/mkgraticule_planet.R --help
+```
+
+Or download a single file directly:
+
+```sh
+# Python
+curl -O https://raw.githubusercontent.com/ryodohemmi/mkgraticule_planet/main/standalone/mkgraticule_planet.py
+python mkgraticule_planet.py --help
+
+# R
+curl -O https://raw.githubusercontent.com/ryodohemmi/mkgraticule_planet/main/standalone/mkgraticule_planet.R
+Rscript mkgraticule_planet.R --help
+```
+
+If you need to set up a fresh conda environment:
+
+```sh
+# Python
+conda create -n mkgrat -c conda-forge gdal
+conda activate mkgrat
+
+# R
+conda create -n rsf -c conda-forge r-base r-sf r-rsqlite r-dbi
+conda activate rsf
+```
+
+#### Option 2: conda install (under review)
 
 ```sh
 conda install -c conda-forge mkgraticule_planet
@@ -57,16 +98,6 @@ conda install -c conda-forge mkgraticule_planet
 
 > **Note:** This package is currently under review for inclusion in conda-forge.
 > The command above will be available once the review is complete.
-> GDAL does not provide pre-built wheels on PyPI, so `pip install` cannot
-> resolve the GDAL dependency reliably. Installing via conda is recommended.
-
-#### Option 2: OSGeo4W (QGIS users on Windows)
-
-If you are using the OSGeo4W shell bundled with QGIS, GDAL is usually already available. Clone the repository and run the script directly:
-
-```sh
-python python/mkgraticule_planet.py --help
-```
 
 #### Option 3: Install from source (for development)
 
@@ -76,15 +107,6 @@ cd mkgraticule_planet
 conda create -n mkgrat -c conda-forge gdal
 conda activate mkgrat
 pip install -e .
-```
-
-### R implementation
-
-R with `sf`, `DBI`, and `RSQLite`.
-
-```sh
-conda create -n rsf -c conda-forge r-base r-sf r-rsqlite r-dbi
-conda activate rsf
 ```
 
 For a compact summary of conda download size and post-install environment size for both implementations, see [docs/setup/conda-env-size-summary-2026-03-17.md](docs/setup/conda-env-size-summary-2026-03-17.md).
@@ -107,10 +129,7 @@ You can also run via `python -m`:
 python -m mkgraticule_planet --help
 ```
 
-When running from a cloned repository without installing, move into the corresponding implementation directory:
-
-- `python/` for the Python / GDAL implementation
-- `r/` for the R / sf implementation
+When running standalone scripts from a cloned repository, use the files in `standalone/`:
 
 Output filenames may be specified either with or without the `.gpkg` extension. If the extension is omitted, it is added automatically.
 
@@ -180,7 +199,7 @@ If a near-global geographic extent is requested, reprojection may fail.
 For projected + near-global requests, restricting the extent with `-e` is usually the best solution.  
 Combining `-s` with `-p` can sometimes produce partial output near projection domain limits.
 
-For projections with a singular center, the tool also writes a companion point layer (`*_points`).  
+For projections with a singular center, the tool also writes a companion point layer (`point`).  
 This layer can contain:
 
 - `collapsed` points for graticule features that collapse to a single point in the projected CRS
@@ -242,7 +261,7 @@ Because polar stereographic projections have a **limited valid domain**,
 the geographic extent is restricted to the south polar region.  
 The `-nde` option is used to remove the duplicate endpoint meridian.
 
-For this type of projection, the tool also writes a companion point layer (`*_points`), which can be used to display labels such as `90°S` at the projection center in QGIS.
+For this type of projection, the tool also writes a companion point layer (`point`), which can be used to display labels such as `90°S` at the projection center in QGIS.
 
 Command:
 
@@ -291,7 +310,7 @@ python mkgraticule_planet.py -srs ESRI:54009 \
 | lon_360e   | longitude label (0°E … 360°E) |
 | grid_type  | `"major"` / `"minor"` when `--major` is used (otherwise NULL) |
 
-### Companion point layer (`*_points`)
+### Companion point layer (`point`)
 
 | Field      | Description |
 | ---------- | ----------- |
