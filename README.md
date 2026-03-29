@@ -57,11 +57,13 @@ conda install -c conda-forge mkgraticule_planet
 > **Note:** GDAL does not provide pre-built wheels on PyPI, so `pip install` cannot
 > resolve the GDAL dependency reliably. Installing via conda is recommended.
 
-#### Option 2: conda environment + pip (from source)
+#### Option 2: Install from source (for development)
 
 ```sh
-conda create -n gdal -c conda-forge gdal numpy
-conda activate gdal
+git clone https://github.com/ryodohemmi/mkgraticule_planet.git
+cd mkgraticule_planet
+conda create -n mkgrat -c conda-forge gdal numpy
+conda activate mkgrat
 pip install -e .
 ```
 
