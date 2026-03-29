@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "0.4.1"
+VERSION <- "0.4.2"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
@@ -56,7 +56,7 @@ usage <- function(status = 0) {
     "      (e.g., keep -180 and drop 180, or keep 0 and drop 360).\n",
     "  -l, --layer NAME\n",
     "      Set output layer name explicitly.\n",
-    "      If not set, use the basename of outfile without extension instead.\n",
+    "      If not set, defaults to 'grid' (points layer: 'point').\n",
     "  -lo, --lat-orig VALUE\n",
     "      Overwrite latitude of origin / false origin / natural origin in the target projected CRS (degrees).\n",
     "  -ls, --lat-sp VALUE\n",
@@ -597,7 +597,7 @@ progress_bar <- function(i, total, label, progress_bar_width = 20L) {
 }
 
 normalize_param_name <- function(x) {
-  tolower(gsub("[^a-z0-9]", "", x))
+  gsub("[^a-z0-9]", "", tolower(x))
 }
 
 extract_wkt_parameters <- function(wkt) {
@@ -914,8 +914,13 @@ opts <- parse_args(args)
 proj_crs  <- get_optional(opts, "proj-crs", "IAU_2015:30100")
 geo_crs   <- infer_geo_crs_from_srs(proj_crs)
 output    <- normalize_outfile(get_required(opts, "outfile"))
-layer     <- get_optional(opts, "layer", layer_from_outfile(output))
-point_layer <- paste0(layer, "_points")
+layer     <- get_optional(opts, "layer", NULL)
+if (is.null(layer)) {
+  layer <- "grid"
+  point_layer <- "point"
+} else {
+  point_layer <- paste0(layer, "_point")
+}
 
 lat_min   <- to_num(get_optional(opts, "lat-min", "-90"),  "--lat-min / -e[4]")
 lat_max   <- to_num(get_optional(opts, "lat-max",  "90"),  "--lat-max / -e[2]")
@@ -1103,7 +1108,9 @@ if (projected && !is.null(center$lat) && !is.null(center$lon)) {
   }
 
   if (!is.null(center_xy) && all(is.finite(center_xy))) {
-    point_rows[[length(point_rows) + 1L]] <- new_center_point_row(center$lat, center$lon)
+    is_pole <- !is.null(center$lat) && abs(abs(center$lat) - 90) <= 1e-9
+    center_lon_val <- if (is_pole) NULL else center$lon
+    point_rows[[length(point_rows) + 1L]] <- new_center_point_row(center$lat, center_lon_val)
     point_geoms[[length(point_geoms) + 1L]] <- st_point(as.numeric(center_xy))
   }
 }

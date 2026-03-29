@@ -4,7 +4,7 @@
 """
 mkgraticule_planet.py
 
-Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as QGIS-friendly GeoPackage.
+Create planetary graticules for IAU coordinate systems and export them as GeoPackage.
 
 Based on the GDAL sample script mkgraticule.py
 https://github.com/OSGeo/gdal/blob/master/swig/python/gdal-utils/osgeo_utils/samples/mkgraticule.py
@@ -18,12 +18,12 @@ Example
 python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 180 -90 out.gpkg
 """
 
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Ryodo Hemmi
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.5.2"
+__version__ = "0.4.2"
 
 try:
     from osgeo import osr, ogr, gdal
