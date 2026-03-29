@@ -35,7 +35,7 @@ test:
 
 about:
   home: https://github.com/ryodohemmi/mkgraticule_planet
-  summary: Create planetary graticules for IAU coordinate systems and export as GeoPackage
+  summary: Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as QGIS-friendly GeoPackage
   license: Apache-2.0
   license_file: LICENSE
 
