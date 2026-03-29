@@ -54,8 +54,8 @@ Longitude labels:
 conda install -c conda-forge mkgraticule_planet
 ```
 
-> GDAL は PyPI に wheel を提供していないため、`pip install` では正常にインストールできません。
-> conda 経由でのインストールを推奨します。
+> **Note:** GDAL does not provide pre-built wheels on PyPI, so `pip install` cannot
+> resolve the GDAL dependency reliably. Installing via conda is recommended.
 
 #### Option 2: conda environment + pip (from source)
 
