@@ -57,22 +57,22 @@ conda install -c conda-forge mkgraticule_planet
 > **Note:** GDAL does not provide pre-built wheels on PyPI, so `pip install` cannot
 > resolve the GDAL dependency reliably. Installing via conda is recommended.
 
-#### Option 2: Install from source (for development)
-
-```sh
-git clone https://github.com/ryodohemmi/mkgraticule_planet.git
-cd mkgraticule_planet
-conda create -n mkgrat -c conda-forge gdal numpy
-conda activate mkgrat
-pip install -e .
-```
-
-#### Option 3: OSGeo4W (QGIS users on Windows)
+#### Option 2: OSGeo4W (QGIS users on Windows)
 
 If you are using the OSGeo4W shell bundled with QGIS, GDAL is usually already available. Clone the repository and run the script directly:
 
 ```sh
 python python/mkgraticule_planet.py --help
+```
+
+#### Option 3: Install from source (for development)
+
+```sh
+git clone https://github.com/ryodohemmi/mkgraticule_planet.git
+cd mkgraticule_planet
+conda create -n mkgrat -c conda-forge gdal
+conda activate mkgrat
+pip install -e .
 ```
 
 ### R implementation
