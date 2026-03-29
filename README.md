@@ -48,23 +48,16 @@ Longitude labels:
 
 ### Python implementation
 
-#### Option 1: pip install (recommended for pip users)
-
-```sh
-pip install mkgraticule_planet
-```
-
-> **Note:** The GDAL Python bindings require a working GDAL C library.
-> If `pip install` fails for the GDAL dependency, install GDAL separately first
-> (e.g. via conda or your system package manager) and then retry.
-
-#### Option 2: conda install (recommended — handles GDAL automatically)
+#### Option 1: conda install (recommended)
 
 ```sh
 conda install -c conda-forge mkgraticule_planet
 ```
 
-#### Option 3: conda environment + pip (from source)
+> GDAL は PyPI に wheel を提供していないため、`pip install` では正常にインストールできません。
+> conda 経由でのインストールを推奨します。
+
+#### Option 2: conda environment + pip (from source)
 
 ```sh
 conda create -n gdal -c conda-forge gdal numpy
@@ -72,7 +65,7 @@ conda activate gdal
 pip install -e .
 ```
 
-#### Option 4: OSGeo4W (QGIS users on Windows)
+#### Option 3: OSGeo4W (QGIS users on Windows)
 
 If you are using the OSGeo4W shell bundled with QGIS, GDAL is usually already available. Clone the repository and run the script directly:
 
@@ -97,7 +90,7 @@ For the rationale behind the graticule-generation workflow and a comparison with
 
 ## Usage
 
-If installed via `pip install` or `conda install`, the `mkgraticule_planet` command is available directly:
+If installed via `conda install`, the `mkgraticule_planet` command is available directly:
 
 ```sh
 mkgraticule_planet --help
