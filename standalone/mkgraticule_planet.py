@@ -23,7 +23,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.4.3"
+__version__ = "0.4.4"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -358,12 +358,16 @@ def lon_360_label(lon: float) -> str:
 def lon_360e_label(lon: float) -> str:
     v = (float(lon) % 360.0 + 360.0) % 360.0
     v = _norm_zero(v)
+    if v == 0:
+        return "0°"
     return f"{_deg_text(v)}°E"
 
 
 def lon_360w_label(lon: float) -> str:
     v = ((-float(lon)) % 360.0 + 360.0) % 360.0
     v = _norm_zero(v)
+    if v == 0:
+        return "0°"
     return f"{_deg_text(v)}°W"
 
 
