@@ -361,6 +361,12 @@ def lon_360e_label(lon: float) -> str:
     return f"{_deg_text(v)}°E"
 
 
+def lon_360w_label(lon: float) -> str:
+    v = ((-float(lon)) % 360.0 + 360.0) % 360.0
+    v = _norm_zero(v)
+    return f"{_deg_text(v)}°W"
+
+
 def _is_multiple(val: float, base: float, eps: float = 1e-9) -> bool:
     """
     True if val is (approximately) an integer multiple of base.
@@ -622,6 +628,7 @@ def _ensure_point_layer(ds_mem, point_layer, point_layer_name, srs_target):
     point_layer.CreateField(ogr.FieldDefn("lon_ew", ogr.OFTString))
     point_layer.CreateField(ogr.FieldDefn("lon_360", ogr.OFTString))
     point_layer.CreateField(ogr.FieldDefn("lon_360e", ogr.OFTString))
+    point_layer.CreateField(ogr.FieldDefn("lon_360w", ogr.OFTString))
     point_layer.CreateField(ogr.FieldDefn("point_role", ogr.OFTString))
     
     return point_layer
@@ -656,12 +663,15 @@ def _add_projection_center_point(
         feat.SetFieldNull("lon_ew")
         feat.SetFieldNull("lon_360")
         feat.SetFieldNull("lon_360e")
+        feat.SetFieldNull("lon_360w")
+        feat.SetFieldNull("lon_360w")
     else:
         feat.SetField("lon", float(center_lon))
         feat.SetField("lon_180", lon_180_label(center_lon))
         feat.SetField("lon_ew", lon_ew_label(center_lon))
         feat.SetField("lon_360", lon_360_label(center_lon))
         feat.SetField("lon_360e", lon_360e_label(center_lon))
+        feat.SetField("lon_360w", lon_360w_label(center_lon))
 
     feat.SetField("point_role", "center")
 
@@ -881,6 +891,7 @@ def main():
     layer.CreateField(ogr.FieldDefn("lon_ew", ogr.OFTString))
     layer.CreateField(ogr.FieldDefn("lon_360", ogr.OFTString))
     layer.CreateField(ogr.FieldDefn("lon_360e", ogr.OFTString))
+    layer.CreateField(ogr.FieldDefn("lon_360w", ogr.OFTString))
     layer.CreateField(ogr.FieldDefn("grid_type", ogr.OFTString))
 
     #########################################################################
@@ -933,6 +944,8 @@ def main():
             feat.SetFieldNull("lon_ew")
             feat.SetFieldNull("lon_360")
             feat.SetFieldNull("lon_360e")
+        feat.SetFieldNull("lon_360w")
+            feat.SetFieldNull("lon_360w")
 
             feat.SetField("point_role", "collapsed")
             
@@ -959,6 +972,7 @@ def main():
         feat.SetFieldNull("lon_ew")
         feat.SetFieldNull("lon_360")
         feat.SetFieldNull("lon_360e")
+        feat.SetFieldNull("lon_360w")
 
         if ymajor is None:
             feat.SetFieldNull("grid_type")
@@ -1002,6 +1016,7 @@ def main():
             feat.SetField("lon_ew", lon_ew_label(lon))
             feat.SetField("lon_360", lon_360_label(lon))
             feat.SetField("lon_360e", lon_360e_label(lon))
+            feat.SetField("lon_360w", lon_360w_label(lon))
             feat.SetField("point_role", "collapsed")
 
             pt.FlattenTo2D()
@@ -1026,6 +1041,7 @@ def main():
         feat.SetField("lon_ew", lon_ew_label(lon))
         feat.SetField("lon_360", lon_360_label(lon))
         feat.SetField("lon_360e", lon_360e_label(lon))
+        feat.SetField("lon_360w", lon_360w_label(lon))
 
         if xmajor is None:
             feat.SetFieldNull("grid_type")

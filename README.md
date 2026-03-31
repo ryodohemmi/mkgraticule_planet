@@ -44,6 +44,7 @@ Longitude labels:
 * `lon_ew` → 180°W to 180°E
 * `lon_360` → 0° to 360°
 * `lon_360e` → 0°E to 360°E
+* `lon_360w` → 0°W to 360°W
 
 ## Installation
 
@@ -308,6 +309,7 @@ python mkgraticule_planet.py -srs ESRI:54009 \
 | lon_ew     | longitude label (180°W … 180°E) |
 | lon_360    | longitude label (0° … 360°) |
 | lon_360e   | longitude label (0°E … 360°E) |
+| lon_360w   | longitude label (0°W … 360°W) |
 | grid_type  | `"major"` / `"minor"` when `--major` is used (otherwise NULL) |
 
 ### Companion point layer (`point`)
@@ -323,6 +325,7 @@ python mkgraticule_planet.py -srs ESRI:54009 \
 | lon_ew     | longitude label (180°W … 180°E) |
 | lon_360    | longitude label (0° … 360°) |
 | lon_360e   | longitude label (0°E … 360°E) |
+| lon_360w   | longitude label (0°W … 360°W) |
 | point_role | point role: `collapsed` or `center` |
 
 ## Acknowledgement
