@@ -305,6 +305,12 @@ lon_360e_label <- function(lon) {
   paste0(deg_text(v), "°E")
 }
 
+lon_360w_label <- function(lon) {
+  v <- ((-as.numeric(lon)) %% 360 + 360) %% 360
+  v <- norm_zero(v)
+  paste0(deg_text(v), "°W")
+}
+
 is_multiple <- function(val, base, eps = 1e-9) {
   if (is.null(base) || is.na(base)) return(FALSE)
   base <- as.numeric(base)
@@ -758,6 +764,7 @@ new_parallel_line_row <- function(row, lat, grid_type = NA_character_) {
     lon_ew = NA_character_,
     lon_360 = NA_character_,
     lon_360e = NA_character_,
+    lon_360w = NA_character_,
     grid_type = if (is.null(grid_type)) NA_character_ else as.character(grid_type),
     stringsAsFactors = FALSE
   )
@@ -774,6 +781,7 @@ new_meridian_line_row <- function(row, lon, grid_type = NA_character_) {
     lon_ew = lon_ew_label(lon),
     lon_360 = lon_360_label(lon),
     lon_360e = lon_360e_label(lon),
+    lon_360w = lon_360w_label(lon),
     grid_type = if (is.null(grid_type)) NA_character_ else as.character(grid_type),
     stringsAsFactors = FALSE
   )
@@ -790,6 +798,7 @@ new_parallel_point_row <- function(row, lat, point_role = "collapsed") {
     lon_ew = NA_character_,
     lon_360 = NA_character_,
     lon_360e = NA_character_,
+    lon_360w = NA_character_,
     point_role = point_role,
     stringsAsFactors = FALSE
   )
@@ -806,6 +815,7 @@ new_meridian_point_row <- function(row, lon, point_role = "collapsed") {
     lon_ew = lon_ew_label(lon),
     lon_360 = lon_360_label(lon),
     lon_360e = lon_360e_label(lon),
+    lon_360w = lon_360w_label(lon),
     point_role = point_role,
     stringsAsFactors = FALSE
   )
@@ -822,6 +832,7 @@ new_center_point_row <- function(center_lat, center_lon) {
     lon_ew = if (is.null(center_lon)) NA_character_ else lon_ew_label(center_lon),
     lon_360 = if (is.null(center_lon)) NA_character_ else lon_360_label(center_lon),
     lon_360e = if (is.null(center_lon)) NA_character_ else lon_360e_label(center_lon),
+    lon_360w = if (is.null(center_lon)) NA_character_ else lon_360w_label(center_lon),
     point_role = "center",
     stringsAsFactors = FALSE
   )
