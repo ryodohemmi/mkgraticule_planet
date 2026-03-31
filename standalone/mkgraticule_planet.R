@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "0.4.3"
+VERSION <- "0.4.4"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
@@ -302,12 +302,14 @@ lon_360_label <- function(lon) {
 lon_360e_label <- function(lon) {
   v <- ((as.numeric(lon) %% 360) + 360) %% 360
   v <- norm_zero(v)
+  if (v == 0) return("0°")
   paste0(deg_text(v), "°E")
 }
 
 lon_360w_label <- function(lon) {
   v <- ((-as.numeric(lon)) %% 360 + 360) %% 360
   v <- norm_zero(v)
+  if (v == 0) return("0°")
   paste0(deg_text(v), "°W")
 }
 
