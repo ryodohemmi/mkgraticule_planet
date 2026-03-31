@@ -664,7 +664,6 @@ def _add_projection_center_point(
         feat.SetFieldNull("lon_360")
         feat.SetFieldNull("lon_360e")
         feat.SetFieldNull("lon_360w")
-        feat.SetFieldNull("lon_360w")
     else:
         feat.SetField("lon", float(center_lon))
         feat.SetField("lon_180", lon_180_label(center_lon))
@@ -944,7 +943,6 @@ def main():
             feat.SetFieldNull("lon_ew")
             feat.SetFieldNull("lon_360")
             feat.SetFieldNull("lon_360e")
-        feat.SetFieldNull("lon_360w")
             feat.SetFieldNull("lon_360w")
 
             feat.SetField("point_role", "collapsed")
