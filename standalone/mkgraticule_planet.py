@@ -25,7 +25,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -f spatiali
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.4.5"
+__version__ = "0.4.6"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -270,7 +270,7 @@ def _resolve_output_format(outfile, fmt_flag):
         fmt = "gpkg"
 
     if fmt == "spatialite":
-        return ("spatialite", "SQLite", ".sqlite", ["SPATIALITE=YES"], False)
+        return ("spatialite", "SQLite", ".spatialite", ["SPATIALITE=YES"], False)
     return ("gpkg", "GPKG", ".gpkg", ["ADD_GPKG_OGR_CONTENTS=NO"], True)
 
 
