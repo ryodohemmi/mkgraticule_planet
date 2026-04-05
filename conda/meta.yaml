@@ -1,5 +1,5 @@
 {% set name = "mkgraticule_planet" %}
-{% set version = "0.5.3" %}
+{% set version = "0.5.6" %}
 
 package:
   name: {{ name|lower }}
@@ -35,7 +35,7 @@ test:
 
 about:
   home: https://github.com/ryodohemmi/mkgraticule_planet
-  summary: Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as QGIS-friendly GeoPackage
+  summary: Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as GeoPackage or SpatiaLite
   license: Apache-2.0
   license_file: LICENSE
 
