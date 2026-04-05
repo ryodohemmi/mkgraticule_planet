@@ -6,13 +6,13 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "0.4.4"
+VERSION <- "0.4.5"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
   cat(paste0(
     "mkgraticule_planet.R\n",
-    "Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as QGIS-friendly GeoPackage.\n\n",
+    "Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as GeoPackage or SpatiaLite.\n\n",
     "Usage:\n",
     "  Rscript mkgraticule_planet.R \\\n",
     "    -srs IAU_2015:30135 \\\n",
@@ -24,6 +24,11 @@ usage <- function(status = 0) {
     "  outfile\n",
     "      Set the output filename\n",
     "      If no file extension is given, .gpkg is appended automatically.\n",
+    "  -f, --format FORMAT\n",
+    "      Output format: 'gpkg' (GeoPackage) or 'spatialite' (SpatiaLite SQLite).\n",
+    "      Auto-detected from outfile extension if omitted:\n",
+    "        .gpkg -> gpkg, .sqlite -> spatialite.\n",
+    "      Defaults to gpkg if extension is ambiguous.\n",
     "Options:\n",
     "  -h, --help\n",
     "      Show this help message and exit.\n",
@@ -157,6 +162,17 @@ parse_args <- function(args) {
       next
     }
 
+    if (key %in% c("-f", "--format")) {
+      vals <- expect_n_values(args, i, 1, key)
+      fmt <- tolower(vals[1])
+      if (!fmt %in% c("gpkg", "spatialite")) {
+        stop(sprintf("--format must be 'gpkg' or 'spatialite', got '%s'", vals[1]))
+      }
+      res[["format"]] <- fmt
+      i <- i + 2
+      next
+    }
+
     if (key %in% c("-l", "--layer")) {
       vals <- expect_n_values(args, i, 1, key)
       res[["layer"]] <- vals[1]
@@ -244,6 +260,27 @@ normalize_outfile <- function(path) {
   } else {
     path
   }
+}
+
+resolve_output_format <- function(outfile, fmt_flag = NULL) {
+  ext_map <- c(".gpkg" = "gpkg", ".sqlite" = "spatialite", ".sqlite3" = "spatialite", ".spatialite" = "spatialite")
+  ext <- tolower(tools::file_ext(outfile))
+  ext_dot <- if (nzchar(ext)) paste0(".", ext) else ""
+
+  if (!is.null(fmt_flag)) {
+    fmt <- fmt_flag
+  } else if (ext_dot %in% names(ext_map)) {
+    fmt <- ext_map[[ext_dot]]
+  } else {
+    fmt <- "gpkg"
+  }
+
+  if (!nzchar(ext_dot)) {
+    default_ext <- if (fmt == "spatialite") ".sqlite" else ".gpkg"
+    outfile <- paste0(outfile, default_ext)
+  }
+
+  list(outfile = outfile, format = fmt, is_gpkg = (fmt == "gpkg"))
 }
 
 layer_from_outfile <- function(path) {
@@ -926,7 +963,12 @@ opts <- parse_args(args)
 
 proj_crs  <- get_optional(opts, "proj-crs", "IAU_2015:30100")
 geo_crs   <- infer_geo_crs_from_srs(proj_crs)
-output    <- normalize_outfile(get_required(opts, "outfile"))
+out_info  <- resolve_output_format(
+  normalize_outfile(get_required(opts, "outfile")),
+  get_optional(opts, "format", NULL)
+)
+output    <- out_info$outfile
+is_gpkg   <- out_info$is_gpkg
 layer     <- get_optional(opts, "layer", NULL)
 if (is.null(layer)) {
   layer <- "grid"
@@ -1159,7 +1201,13 @@ if (projected) {
   grat_out <- grat_ll
 }
 
-suppressWarnings(st_write(grat_out, output, layer = layer, delete_layer = TRUE, quiet = TRUE))
+if (is_gpkg) {
+  suppressWarnings(st_write(grat_out, output, layer = layer, delete_layer = TRUE, quiet = TRUE))
+} else {
+  suppressWarnings(st_write(grat_out, output, layer = layer,
+                            driver = "SQLite", dataset_options = "SPATIALITE=YES",
+                            delete_layer = TRUE, quiet = TRUE))
+}
 
 point_count <- 0L
 if (length(point_rows) > 0L) {
@@ -1168,13 +1216,21 @@ if (length(point_rows) > 0L) {
     geometry = st_sfc(point_geoms, crs = crs_proj)
   )
   point_count <- nrow(point_sf)
-  suppressWarnings(st_write(point_sf, output, layer = point_layer, delete_layer = TRUE, quiet = TRUE))
+  if (is_gpkg) {
+    suppressWarnings(st_write(point_sf, output, layer = point_layer, delete_layer = TRUE, quiet = TRUE))
+  } else {
+    suppressWarnings(st_write(point_sf, output, layer = point_layer,
+                              driver = "SQLite",
+                              delete_layer = TRUE, quiet = TRUE))
+  }
 }
 
-if (length(applied_overrides) > 0L) {
-  cat("WARN: CRS parameter overrides were applied; skip gpkg_spatial_ref_sys.definition_12_063 update.\n")
-} else {
-  fix_gpkg_crs_wkt(output, proj_crs)
+if (is_gpkg) {
+  if (length(applied_overrides) > 0L) {
+    cat("WARN: CRS parameter overrides were applied; skip gpkg_spatial_ref_sys.definition_12_063 update.\n")
+  } else {
+    fix_gpkg_crs_wkt(output, proj_crs)
+  }
 }
 
 cat(sprintf("Output: %s\n", output))

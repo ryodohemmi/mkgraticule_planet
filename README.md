@@ -1,6 +1,6 @@
 # mkgraticule_planet
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18864189.svg)](https://doi.org/10.5281/zenodo.18864189)  
-Create planetary-scale graticules with multi-format labels for any **GDAL/PROJ-supported CRS** — exported as **QGIS-friendly GeoPackage**.
+Create planetary-scale graticules with multi-format labels for any **GDAL/PROJ-supported CRS** — exported as **GeoPackage** or **SpatiaLite**.
 
 A small CLI utility for generating latitude/longitude grids for planetary bodies using **IAU 2015 planetary coordinate systems**.
 
@@ -17,11 +17,11 @@ Currently, two CLI implementations are available:
 ## Features
 
 * Supports **IAU 2015 planetary coordinate systems**
-* GeoPackage output
+* GeoPackage and SpatiaLite output
 * Compatible with **GDAL 3.x**
 * Available as both **GDAL Python** and **R sf** implementations
 * Multiple graticule label styles
-* QGIS-friendly output suitable for map production: label fields allow immediate graticule labeling, and CRS metadata ([`definition_12_063`](https://www.geopackage.org/spec/#gpkg_spatial_ref_sys_cols_crs_wkt)) ensures that IAU coordinate systems are correctly recognized when the GeoPackage is loaded in QGIS.
+* QGIS-friendly output suitable for map production: label fields allow immediate graticule labeling, and CRS metadata ([`definition_12_063`](https://www.geopackage.org/spec/#gpkg_spatial_ref_sys_cols_crs_wkt)) ensures that IAU coordinate systems are correctly recognized when the GeoPackage is loaded in QGIS (GeoPackage only).
 * Optional major/minor classification via `-m/--major` (`grid_type = major|minor`, otherwise NULL)
 * Safer handling for projected CRS with limited domains:
   * abort on projected + near-global extent unless `-s/--skipfailures` is used
@@ -133,6 +133,19 @@ python -m mkgraticule_planet --help
 When running standalone scripts from a cloned repository, use the files in `standalone/`:
 
 Output filenames may be specified either with or without the `.gpkg` extension. If the extension is omitted, it is added automatically.
+
+The output format is auto-detected from the file extension:
+
+| Extension | Format |
+| --------- | ------ |
+| `.gpkg` (default) | GeoPackage |
+| `.sqlite` / `.sqlite3` / `.spatialite` | SpatiaLite |
+
+To override auto-detection, use `-f/--format`:
+
+```sh
+python mkgraticule_planet.py -f spatialite ... out.db
+```
 
 The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ymin` ("ullr" style).
 
