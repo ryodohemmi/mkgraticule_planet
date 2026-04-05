@@ -4,7 +4,7 @@
 """
 mkgraticule_planet.py
 
-Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as QGIS-friendly GeoPackage.
+Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as GeoPackage or SpatiaLite.
 
 Based on the GDAL sample script mkgraticule.py
 https://github.com/OSGeo/gdal/blob/master/swig/python/gdal-utils/osgeo_utils/samples/mkgraticule.py
@@ -16,6 +16,8 @@ GDAL Python bindings (conda install gdal)
 Example
 -------
 python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 180 -90 out.gpkg
+python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 180 -90 out.sqlite
+python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -f spatialite out.db
 """
 
 # SPDX-License-Identifier: MIT
@@ -23,7 +25,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.4.4"
+__version__ = "0.4.5"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -51,6 +53,17 @@ def get_args():
 
     parser.add_argument("-v", "--version", action="version", version=__version__)
     parser.add_argument("outfile", type=str, help="Set the output filename")
+    parser.add_argument(
+        "-f",
+        "--format",
+        type=str,
+        choices=["gpkg", "spatialite"],
+        default=None,
+        help="Output format: 'gpkg' (GeoPackage) or 'spatialite' (SpatiaLite SQLite).\n"
+             "Auto-detected from outfile extension if omitted:\n"
+             "  .gpkg -> gpkg, .sqlite -> spatialite.\n"
+             "Defaults to gpkg if extension is ambiguous.",
+    )
 
     parser.add_argument(
         "-g",
@@ -236,6 +249,29 @@ def export_pretty_wkt(srs: osr.SpatialReference) -> str:
         return pyproj.CRS.from_wkt(wkt).to_wkt(pretty=True)
     except Exception:
         return wkt
+
+
+_EXT_FORMAT_MAP = {
+    ".gpkg": "gpkg",
+    ".sqlite": "spatialite",
+    ".sqlite3": "spatialite",
+    ".spatialite": "spatialite",
+}
+
+def _resolve_output_format(outfile, fmt_flag):
+    """Return (fmt_key, ogr_driver, default_ext, ds_create_opts, is_gpkg)."""
+    ext = os.path.splitext(outfile)[-1].lower()
+
+    if fmt_flag is not None:
+        fmt = fmt_flag.lower()
+    elif ext in _EXT_FORMAT_MAP:
+        fmt = _EXT_FORMAT_MAP[ext]
+    else:
+        fmt = "gpkg"
+
+    if fmt == "spatialite":
+        return ("spatialite", "SQLite", ".sqlite", ["SPATIALITE=YES"], False)
+    return ("gpkg", "GPKG", ".gpkg", ["ADD_GPKG_OGR_CONTENTS=NO"], True)
 
 
 def update_gpkg_spatial_ref_sys_with_wkt2_2019(gpkg_path: str, srs: osr.SpatialReference) -> None:
@@ -696,18 +732,21 @@ def main():
         pass
 
     #########################################################################
-    # Output format (force GPKG)
+    # Output format
     outfile = args.outfile
-    if os.path.splitext(outfile)[-1].lower() != ".gpkg":
-        outfile += ".gpkg"
+    fmt_key, ogr_driver_name, default_ext, ds_create_opts, is_gpkg = _resolve_output_format(outfile, args.format)
+
+    ext = os.path.splitext(outfile)[-1].lower()
+    if ext not in _EXT_FORMAT_MAP:
+        outfile += default_ext
 
     outdir = os.path.dirname(outfile)
     if outdir:
         os.makedirs(outdir, exist_ok=True)
 
-    drv_out = ogr.GetDriverByName("GPKG")
+    drv_out = ogr.GetDriverByName(ogr_driver_name)
     if drv_out is None:
-        raise RuntimeError("OGR driver 'GPKG' is not available in this GDAL build.")
+        raise RuntimeError(f"OGR driver '{ogr_driver_name}' is not available in this GDAL build.")
 
     if os.path.exists(outfile):
         try:
@@ -1091,7 +1130,7 @@ def main():
                 row += 1
 
     #########################################################################
-    # Write GeoPackage
+    # Write output
     print("=" * terminal_width)
     if projected:
         print(
@@ -1116,14 +1155,12 @@ def main():
         )
 
     vt_opts = gdal.VectorTranslateOptions(
-        format="GPKG",
+        format=ogr_driver_name,
         layers=[layer_name],   # <- main line layer only
         layerName=layer_name,
         dstSRS=t_srs_i,
         srcSRS=t_srs_geog,
-        datasetCreationOptions=[
-            "ADD_GPKG_OGR_CONTENTS=NO",
-        ],
+        datasetCreationOptions=ds_create_opts,
         layerCreationOptions=[
             "SPATIAL_INDEX=YES",
         ],
@@ -1159,7 +1196,7 @@ def main():
     # Write companion point layer if present
     if point_layer is not None and point_layer.GetFeatureCount() > 0:
         vt_point_opts = gdal.VectorTranslateOptions(
-            format="GPKG",
+            format=ogr_driver_name,
             accessMode="update",
             layers=[point_layer_name],   # <- point layer only
             layerName=point_layer_name,
@@ -1196,11 +1233,12 @@ def main():
                 flush=True,
             )
 
-    # Add WKT2_2019 into gpkg_spatial_ref_sys.definition_12_063
-    if applied_overrides:
-        print("WARN: CRS parameter overrides were applied; skip gpkg_spatial_ref_sys.definition_12_063 update.")
-    else:
-        update_gpkg_spatial_ref_sys_with_wkt2_2019(outfile, t_srs_i)
+    # Add WKT2_2019 into gpkg_spatial_ref_sys.definition_12_063 (GPKG only)
+    if is_gpkg:
+        if applied_overrides:
+            print("WARN: CRS parameter overrides were applied; skip gpkg_spatial_ref_sys.definition_12_063 update.")
+        else:
+            update_gpkg_spatial_ref_sys_with_wkt2_2019(outfile, t_srs_i)
 
     print("=" * terminal_width)
     print(f"Output: {outfile}")
