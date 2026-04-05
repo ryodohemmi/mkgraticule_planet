@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "0.4.5"
+VERSION <- "0.4.6"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
@@ -276,7 +276,7 @@ resolve_output_format <- function(outfile, fmt_flag = NULL) {
   }
 
   if (!nzchar(ext_dot)) {
-    default_ext <- if (fmt == "spatialite") ".sqlite" else ".gpkg"
+    default_ext <- if (fmt == "spatialite") ".spatialite" else ".gpkg"
     outfile <- paste0(outfile, default_ext)
   }
 
