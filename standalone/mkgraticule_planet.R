@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "0.4.6"
+VERSION <- "0.4.7"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
@@ -964,7 +964,7 @@ opts <- parse_args(args)
 proj_crs  <- get_optional(opts, "proj-crs", "IAU_2015:30100")
 geo_crs   <- infer_geo_crs_from_srs(proj_crs)
 out_info  <- resolve_output_format(
-  normalize_outfile(get_required(opts, "outfile")),
+  get_required(opts, "outfile"),
   get_optional(opts, "format", NULL)
 )
 output    <- out_info$outfile
