@@ -25,7 +25,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -f spatiali
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.5.6"
+__version__ = "0.5.7"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -230,25 +230,64 @@ def export_wkt2_2019(srs: osr.SpatialReference) -> str:
         except Exception:
             return srs.ExportToWkt()
 
+def _indent_wkt(wkt: str) -> str:
+    """Add indentation to a single-line WKT2 string.
+
+    Mimics the style produced by PROJ/sf: break after commas that
+    precede a keyword (uppercase letter), keep scalar values on the
+    same line.
+    """
+    import re
+    out = []
+    depth = 0
+    i = 0
+    n = len(wkt)
+    while i < n:
+        ch = wkt[i]
+        if ch == '[':
+            out.append('[')
+            depth += 1
+            i += 1
+        elif ch == ']':
+            depth -= 1
+            out.append(']')
+            i += 1
+        elif ch == ',':
+            out.append(',')
+            i += 1
+            # skip spaces
+            while i < n and wkt[i] == ' ':
+                i += 1
+            # break line only if next token is a WKT keyword (uppercase letter)
+            if i < n and wkt[i].isupper():
+                out.append('\n')
+                out.append('    ' * depth)
+            else:
+                # scalar value follows — keep on same line
+                out.append('')
+        else:
+            out.append(ch)
+            i += 1
+    return ''.join(out)
+
+
 def export_pretty_wkt(srs: osr.SpatialReference) -> str:
     """
-    Return a human-readable WKT string for console output.
-    Prefer GDAL/OSR's pretty exporter so this works without pyproj.
+    Return a human-readable WKT2:2019 string for console output.
     """
-    try:
-        pretty = srs.ExportToPrettyWkt(0)
-        if pretty:
-            return pretty
-    except Exception:
-        pass
-
     wkt = export_wkt2_2019(srs)
 
     try:
         import pyproj
         return pyproj.CRS.from_wkt(wkt).to_wkt(pretty=True)
     except Exception:
-        return wkt
+        pass
+
+    # Indent WKT2 without pyproj
+    if wkt and ("GEOGCRS[" in wkt or "PROJCRS[" in wkt or "GEODCRS[" in wkt):
+        return _indent_wkt(wkt)
+
+    return wkt
 
 
 _EXT_FORMAT_MAP = {
