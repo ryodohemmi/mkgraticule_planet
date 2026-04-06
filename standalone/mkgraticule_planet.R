@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "0.4.7"
+VERSION <- "0.4.8"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
@@ -593,6 +593,12 @@ make_parallel <- function(lat, lon_min, lon_max, step) {
 
 terminal_width <- function(default = 80L) {
   cols <- suppressWarnings(as.integer(Sys.getenv("COLUMNS", unset = "")))
+  if (is.na(cols) || cols <= 0) {
+    # Try tput cols (works on most Unix terminals)
+    cols <- tryCatch({
+      suppressWarnings(as.integer(system("tput cols 2>/dev/null", intern = TRUE)))
+    }, error = function(e) NA_integer_)
+  }
   if (is.na(cols) || cols <= 0) {
     cols <- suppressWarnings(as.integer(getOption("width", default)))
   }
@@ -1206,6 +1212,7 @@ if (is_gpkg) {
 } else {
   suppressWarnings(st_write(grat_out, output, layer = layer,
                             driver = "SQLite", dataset_options = "SPATIALITE=YES",
+                            layer_options = "SPATIAL_INDEX=YES",
                             delete_layer = TRUE, quiet = TRUE))
 }
 
@@ -1221,6 +1228,7 @@ if (length(point_rows) > 0L) {
   } else {
     suppressWarnings(st_write(point_sf, output, layer = point_layer,
                               driver = "SQLite",
+                              layer_options = "SPATIAL_INDEX=YES",
                               delete_layer = TRUE, quiet = TRUE))
   }
 }
