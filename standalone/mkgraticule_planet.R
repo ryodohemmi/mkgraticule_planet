@@ -6,13 +6,17 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "0.4.8"
+VERSION <- "0.4.9"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
   cat(paste0(
     "mkgraticule_planet.R\n",
-    "Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as GeoPackage or SpatiaLite.\n\n",
+    "Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS\n",
+    "— exported as GeoPackage or SpatiaLite.\n\n",
+    "Repository: https://github.com/ryodohemmi/mkgraticule_planet\n",
+    "Citation:   Hemmi, R. (2026). mkgraticule_planet. Zenodo.\n",
+    "            https://doi.org/10.5281/zenodo.18864189\n\n",
     "Usage:\n",
     "  Rscript mkgraticule_planet.R \\\n",
     "    -srs IAU_2015:30135 \\\n",
