@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-
 
 """
-mkgraticule_planet.py
+mkgraticule_planet
 
-Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as GeoPackage or SpatiaLite.
+Create planetary-scale graticules with multi-format labels for any
+GDAL/PROJ-supported CRS — exported as GeoPackage or SpatiaLite.
 
-Based on the GDAL sample script mkgraticule.py
-https://github.com/OSGeo/gdal/blob/master/swig/python/gdal-utils/osgeo_utils/samples/mkgraticule.py
+Repository: https://github.com/ryodohemmi/mkgraticule_planet
+Citation:   Hemmi, R. (2026). mkgraticule_planet. Zenodo.
+            https://doi.org/10.5281/zenodo.18864189
 
 Requirements
 ------------
@@ -25,7 +27,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -f spatiali
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "0.5.8"
+__version__ = "0.5.9"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -49,7 +51,13 @@ class CustomFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHe
     pass
 
 def get_args():
-    parser = argparse.ArgumentParser(formatter_class=CustomFormatter)
+    parser = argparse.ArgumentParser(
+        formatter_class=CustomFormatter,
+        description="Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS.",
+        epilog="Repository: https://github.com/ryodohemmi/mkgraticule_planet\n"
+               "Citation:   Hemmi, R. (2026). mkgraticule_planet. Zenodo.\n"
+               "            https://doi.org/10.5281/zenodo.18864189",
+    )
 
     parser.add_argument("-v", "--version", action="version", version=__version__)
     parser.add_argument("outfile", type=str, help="Set the output filename")
