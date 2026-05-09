@@ -50,7 +50,16 @@ Longitude labels:
 
 ### Python implementation
 
-#### Option 1: Use standalone scripts directly (best recommended)
+#### Option 1: conda install (recommended)
+
+```sh
+conda install -c conda-forge mkgraticule-planet
+```
+
+> **Note:** GDAL does not provide pre-built wheels on PyPI, so `pip install` cannot
+> resolve the GDAL dependency reliably. Installing via conda is recommended.
+
+#### Option 2: Use standalone scripts directly
 
 The [`standalone/`](/standalone/) directory contains self-contained single-file scripts for both Python and R. No package installation is required -- just download or clone and run.
 
@@ -90,15 +99,6 @@ conda activate mkgrat
 conda create -n rsf -c conda-forge r-base r-sf r-rsqlite r-dbi
 conda activate rsf
 ```
-
-#### Option 2: conda install (under review)
-
-```sh
-conda install -c conda-forge mkgraticule_planet
-```
-
-> **Note:** This package is currently under review for inclusion in conda-forge.
-> The command above will be available once the review is complete.
 
 #### Option 3: Install from source (for development)
 
