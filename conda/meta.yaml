@@ -6,7 +6,7 @@ package:
 
 source:
   url: https://github.com/ryodohemmi/mkgraticule_planet/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: a7c72d05d1bc3b6deabd42af06f43115fcc1c252405fb55fa1009e5c0cdd90cb
+  sha256: 5aa98afff3062d893f20a1ae8c30c0dd2b7b95cc72736ebc1a264392a5115b0a
 
 build:
   noarch: python
