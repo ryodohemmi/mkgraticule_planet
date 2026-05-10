@@ -150,6 +150,14 @@ python mkgraticule_planet.py -f spatialite ... out.db
 The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ymin` ("ullr" style).
 
 ### Basic example
+
+> **Note:** The examples below use the standalone-script form
+> (`python mkgraticule_planet.py ...` / `Rscript mkgraticule_planet.R ...`).
+> If you installed via `conda install -c conda-forge mkgraticule-planet`,
+> drop the `python` prefix and the `.py` extension and just run
+> `mkgraticule_planet ...` directly. (R has no conda-forge package yet,
+> so the `.R` form always uses the standalone script.)
+
 #### Python / GDAL
 ```sh
 # Moon
