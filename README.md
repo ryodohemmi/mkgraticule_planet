@@ -59,6 +59,13 @@ conda install -c conda-forge mkgraticule-planet
 Or install directly into a new dedicated environment:
 
 ```sh
+conda create -y -n mkgraticule mkgraticule-planet -c conda-forge
+conda activate mkgraticule
+```
+
+With conda 4.4 or newer (Dec 2017), the shorter `channel::package` form is also valid:
+
+```sh
 conda create -y -n mkgraticule conda-forge::mkgraticule-planet
 conda activate mkgraticule
 ```
