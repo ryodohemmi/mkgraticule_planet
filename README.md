@@ -59,15 +59,15 @@ conda install -c conda-forge mkgraticule-planet
 Or install directly into a new dedicated environment:
 
 ```sh
-conda create -y -n mkgraticule mkgraticule-planet -c conda-forge
-conda activate mkgraticule
+conda create -y -n mkgrat mkgraticule-planet -c conda-forge
+conda activate mkgrat
 ```
 
 With conda 4.4 or newer (Dec 2017), the shorter `channel::package` form is also valid:
 
 ```sh
-conda create -y -n mkgraticule conda-forge::mkgraticule-planet
-conda activate mkgraticule
+conda create -y -n mkgrat conda-forge::mkgraticule-planet
+conda activate mkgrat
 ```
 
 > **Note:** GDAL does not provide pre-built wheels on PyPI, so `pip install` cannot
