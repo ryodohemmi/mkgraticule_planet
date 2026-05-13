@@ -1,5 +1,5 @@
 # mkgraticule_planet
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18864189.svg)](https://doi.org/10.5281/zenodo.18864189) [![conda-forge](https://img.shields.io/conda/vn/conda-forge/mkgraticule-planet?label=conda-forge)](https://anaconda.org/conda-forge/mkgraticule-planet)  
+[![conda-forge](https://img.shields.io/conda/vn/conda-forge/mkgraticule-planet?label=conda-forge)](https://anaconda.org/conda-forge/mkgraticule-planet)  
 Create planetary-scale graticules with multi-format labels for any **GDAL/PROJ-supported CRS** — exported as **GeoPackage** or **SpatiaLite**.
 
 A small CLI utility for generating latitude/longitude grids for planetary bodies using **IAU 2015 planetary coordinate systems**.
@@ -171,15 +171,30 @@ The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ym
 
 ### Basic example
 
-> **Note:** The examples below use the standalone-script form
-> (`python mkgraticule_planet.py ...` / `Rscript mkgraticule_planet.R ...`).
-> If you installed via `conda install -c conda-forge mkgraticule-planet`,
-> drop the `python` prefix and the `.py` extension and just run
-> `mkgraticule ...` directly. `mkgraticule_planet` remains available as
-> a compatibility alias. (R has no conda-forge package yet,
-> so the `.R` form always uses the standalone script.)
+> **Note:** Examples are provided in two forms:
+> - **(conda)** — use the `mkgraticule` command after `conda install -c conda-forge mkgraticule-planet`.
+>   `mkgraticule_planet` is also available as a compatibility alias.
+> - **(standalone)** — run the single-file script directly with `python mkgraticule_planet.py ...`
+>   or `Rscript mkgraticule_planet.R ...`.
+>
+> R has no conda-forge package yet, so only the standalone form is shown for R.
 
-#### Python / GDAL
+#### Python / GDAL (conda)
+```sh
+# Moon
+mkgraticule -g 10 10 \
+            -r 0.2 0.2 \
+            -srs IAU_2015:30100 \
+            -e -180 90 180 -90 \
+            moon_graticule.gpkg
+
+# Mars
+mkgraticule -g 15 15 \
+            -r 0.5 0.5 \
+            -srs IAU_2015:49900 \
+            mars_graticule.gpkg
+```
+#### Python / GDAL (standalone)
 ```sh
 # Moon
 python mkgraticule_planet.py -g 10 10 \
@@ -194,7 +209,7 @@ python mkgraticule_planet.py -g 15 15 \
                              -srs IAU_2015:49900 \
                              mars_graticule.gpkg
 ```
-#### R / sf
+#### R / sf (standalone)
 ```sh
 # Moon
 Rscript mkgraticule_planet.R -g 10 10 \
@@ -210,7 +225,17 @@ Rscript mkgraticule_planet.R -g 15 15 \
                              mars_graticule.gpkg
 ```
 ### Major/minor graticules
-#### Python / GDAL
+#### Python / GDAL (conda)
+```sh
+mkgraticule -g 10 10 \
+            -m 30 30 \
+            -srs IAU_2015:40100 \
+            -e -180 90 180 -90 \
+            phobos_graticule.gpkg
+```
+If `-m/--major` is set: `grid_type` will be `"major"` or `"minor"`.
+If omitted: `grid_type` is NULL.
+#### Python / GDAL (standalone)
 ```sh
 python mkgraticule_planet.py -g 10 10 \
                              -m 30 30 \
@@ -218,9 +243,7 @@ python mkgraticule_planet.py -g 10 10 \
                              -e -180 90 180 -90 \
                              phobos_graticule.gpkg
 ```
-If `-m/--major` is set: `grid_type` will be `"major"` or `"minor"`.
-If omitted: `grid_type` is NULL.
-#### R / sf
+#### R / sf (standalone)
 ```sh
 Rscript mkgraticule_planet.R -g 10 10 \
                              -m 30 30 \
