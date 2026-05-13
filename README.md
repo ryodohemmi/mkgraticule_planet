@@ -9,6 +9,21 @@ Currently, two CLI implementations are available:
 * **Python / GDAL**: [`mkgraticule_planet.py`](/standalone/mkgraticule_planet.py)
 * **R / sf**: [`mkgraticule_planet.R`](/standalone/mkgraticule_planet.R)
 
+## Table of Contents
+
+- [Why two implementations?](#why-two-implementations)
+- [Features](#features)
+- [Installation](#installation)
+- [Design notes](#design-notes)
+- [Usage](#usage)
+- [Projected CRS considerations](#projected-crs-considerations)
+- [Planetary CRS](#planetary-crs)
+- [QGIS examples](#qgis-examples)
+- [Output fields](#output-fields)
+- [Acknowledgement](#acknowledgement)
+- [Citation](#citation)
+- [License](#license)
+
 ## Why two implementations?
 
 - Python version for [GDAL](https://github.com/OSGeo/gdal)-centric workflows
