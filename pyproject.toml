@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mkgraticule_planet"
-version = "1.0.0"
+version = "1.0.1"
 description = "Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as GeoPackage or SpatiaLite"
 readme = "README.md"
 license = "Apache-2.0"
@@ -43,7 +43,8 @@ Repository = "https://github.com/ryodohemmi/mkgraticule_planet"
 Changelog = "https://github.com/ryodohemmi/mkgraticule_planet/blob/main/CHANGELOG.md"
 
 [project.scripts]
-mkgraticule_planet = "mkgraticule_planet._cli:main"
+mkgraticule = "mkgraticule_planet.cli:main"
+mkgraticule_planet = "mkgraticule_planet.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

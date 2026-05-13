@@ -132,7 +132,13 @@ For the rationale behind the graticule-generation workflow and a comparison with
 
 ## Usage
 
-If installed via `conda install`, the `mkgraticule_planet` command is available directly:
+After installation, the recommended command is:
+
+```sh
+mkgraticule --help
+```
+
+For compatibility, the longer command is also available:
 
 ```sh
 mkgraticule_planet --help
@@ -169,7 +175,8 @@ The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ym
 > (`python mkgraticule_planet.py ...` / `Rscript mkgraticule_planet.R ...`).
 > If you installed via `conda install -c conda-forge mkgraticule-planet`,
 > drop the `python` prefix and the `.py` extension and just run
-> `mkgraticule_planet ...` directly. (R has no conda-forge package yet,
+> `mkgraticule ...` directly. `mkgraticule_planet` remains available as
+> a compatibility alias. (R has no conda-forge package yet,
 > so the `.R` form always uses the standalone script.)
 
 #### Python / GDAL
