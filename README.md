@@ -299,7 +299,7 @@ To drop the duplicate endpoint meridian while keeping the minimum longitude endp
 - `0..360` → keep `0`, drop `360`
 
 ```sh
-python mkgraticule_planet.py ... -nde
+mkgraticule ... -nde
 ```
 
 ## Planetary CRS
@@ -326,9 +326,9 @@ Example global graticule for **Phobos**, generated using major/minor classificat
 Command:
 
 ```sh
-python mkgraticule_planet.py -srs IAU_2015:40100 \
-                             -g 10 10 -m 30 30 \
-                             phobos_grid10x10
+mkgraticule -srs IAU_2015:40100 \
+            -g 10 10 -m 30 30 \
+            phobos_grid10x10
 ```
 
 ![Phobos graticule example](docs/phobos_graticule_example.png)
@@ -347,10 +347,10 @@ For this type of projection, the tool also writes a companion point layer (`poin
 Command:
 
 ```sh
-python mkgraticule_planet.py -srs IAU_2015:30135 \
-                             -g 10 1 -m 30 2 \
-                             -e -180 -80 180 -90 -nde \
-                             moon_south_pole_graticule.gpkg
+mkgraticule -srs IAU_2015:30135 \
+            -g 10 1 -m 30 2 \
+            -e -180 -80 180 -90 -nde \
+            moon_south_pole_graticule.gpkg
 ```
 
 ![Moon graticule example](docs/moon_graticule_example.png)
@@ -365,11 +365,11 @@ This example shows that the tool can also be used with non-IAU coordinate refere
 Command:
 
 ```sh
-python mkgraticule_planet.py -srs ESRI:54009 \
-                             -g 30 10 \
-                             -m 90 30 \
-                             -e -180 90 180 -90 \
-                             earth_mollweide_graticule.gpkg
+mkgraticule -srs ESRI:54009 \
+            -g 30 10 \
+            -m 90 30 \
+            -e -180 90 180 -90 \
+            earth_mollweide_graticule.gpkg
 ```
 
 ![Earth graticule example](docs/earth_graticule_example.png)
