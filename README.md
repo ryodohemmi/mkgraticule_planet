@@ -1,6 +1,6 @@
 # mkgraticule_planet
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/mkgraticule-planet?label=conda-forge)](https://anaconda.org/conda-forge/mkgraticule-planet)  
-Create planetary-scale graticules with multi-format labels for any **GDAL/PROJ-supported CRS** — exported as **GeoPackage** or **SpatiaLite**.
+Create planetary-scale graticules with multi-format labels for any **GDAL/PROJ-supported CRS** — exported as **GeoPackage**, **SpatiaLite**, or Python-only fitted **3D PLY**.
 
 A small CLI utility for generating latitude/longitude grids for planetary bodies using **IAU 2015 planetary coordinate systems**.
 
@@ -9,12 +9,15 @@ Currently, two CLI implementations are available:
 * **Python / GDAL**: [`mkgraticule_planet.py`](/standalone/mkgraticule_planet.py)
 * **R / sf**: [`mkgraticule_planet.R`](/standalone/mkgraticule_planet.R)
 
+The fitted 3D PLY output for OBJ/mesh shape models is available in the Python implementation only.
+
 ## Table of Contents
 
 - [Why two implementations?](#why-two-implementations)
 - [Features](#features)
 - [Installation](#installation)
 - [Design notes](#design-notes)
+- [Why Shapefile and GeoJSON export are not supported](#why-shapefile-and-geojson-export-are-not-supported)
 - [Usage](#usage)
 - [Projected CRS considerations](#projected-crs-considerations)
 - [Planetary CRS](#planetary-crs)
@@ -33,8 +36,9 @@ Currently, two CLI implementations are available:
 
 * Supports **IAU 2015 planetary coordinate systems**
 * GeoPackage and SpatiaLite output
+* Python-only fitted 3D PLY output for OBJ/mesh shape models
 * Compatible with **GDAL 3.x**
-* Available as both **GDAL Python** and **R sf** implementations
+* Available as both **GDAL Python** and **R sf** implementations for 2D GIS output
 * Multiple graticule label styles
 * QGIS-friendly output suitable for map production: label fields allow immediate graticule labeling, and CRS metadata ([`definition_12_063`](https://www.geopackage.org/spec/#gpkg_spatial_ref_sys_cols_crs_wkt)) ensures that IAU coordinate systems are correctly recognized when the GeoPackage is loaded in QGIS (GeoPackage only).
 * Optional major/minor classification via `-m/--major` (`grid_type = major|minor`, otherwise NULL)
@@ -90,11 +94,11 @@ conda activate myenv
 
 #### Option 2: Use standalone scripts directly
 
-The [`standalone/`](/standalone/) directory contains self-contained single-file scripts for both Python and R. No package installation is required -- just download or clone and run.
+The [`standalone/`](/standalone/) directory contains self-contained single-file scripts for both Python and R. No package installation is required beyond the runtime libraries -- just download or clone and run.
 
 These work in any environment where GDAL (Python) or sf (R) is already available:
 
-- **Your existing conda environment** with `gdal` (Python) or `r-base r-sf r-rsqlite r-dbi` (R)
+- **Your existing conda environment** with `gdal` (Python), plus `trimesh rtree` and an Embree binding for Python PLY output, or `r-base r-sf r-rsqlite r-dbi` (R)
 - **OSGeo4W Shell** bundled with QGIS (GDAL is pre-installed)
 - Any other setup with the required libraries
 
@@ -121,7 +125,7 @@ If you need to set up a fresh conda environment:
 
 ```sh
 # Python
-conda create -n myenv -c conda-forge gdal
+conda create -n myenv -c conda-forge gdal trimesh rtree
 conda activate myenv
 
 # R
@@ -129,12 +133,31 @@ conda create -n rsf -c conda-forge r-base r-sf r-rsqlite r-dbi
 conda activate rsf
 ```
 
+An equivalent environment file for Python PLY workflows is available at [`docs/setup/phobos-latlon-grid.yml`](docs/setup/phobos-latlon-grid.yml):
+
+```sh
+conda env create -f docs/setup/phobos-latlon-grid.yml
+conda activate phobos-latlon-grid
+```
+
+Embree acceleration is strongly recommended for shape-model PLY output. The `trimesh`/`rtree` fallback is useful for small jobs, but can require very large temporary arrays on irregular meshes.
+
+```sh
+pip install embreex
+```
+
+For Linux, WSL, or macOS conda environments, `pyembree` is also available from conda-forge:
+
+```sh
+conda install -c conda-forge pyembree
+```
+
 #### Option 3: Install from source (for development)
 
 ```sh
 git clone https://github.com/ryodohemmi/mkgraticule_planet.git
 cd mkgraticule_planet
-conda create -n myenv -c conda-forge gdal
+conda create -n myenv -c conda-forge gdal trimesh rtree
 conda activate myenv
 pip install -e .
 ```
@@ -144,6 +167,22 @@ For a compact summary of conda download size and post-install environment size f
 ## Design notes
 
 For the rationale behind the graticule-generation workflow and a comparison with QGIS-native projected-grid tools and `sf::st_graticule()`, see [docs/design/comparison-with-qgis-and-sf.md](docs/design/comparison-with-qgis-and-sf.md).
+
+## Why Shapefile and GeoJSON export are not supported
+
+`mkgraticule_planet` does not support direct Shapefile or GeoJSON export by design.
+
+Shapefile is still widely supported, but it is an old multi-file format with strict field-name limits, fragile character encoding behavior, file-size constraints, and weak self-contained metadata handling. These issues are especially undesirable for planetary GIS data, where the coordinate reference system should be preserved clearly and unambiguously. If Shapefile output is required for legacy software, export a GeoPackage first and convert it with GDAL/OGR:
+
+```sh
+ogr2ogr -f "ESRI Shapefile" output_shapefile input.gpkg
+```
+
+That conversion may lose or degrade metadata, field names, encoding information, or CRS handling depending on the target software.
+
+GeoJSON is also not supported as a primary output format because RFC 7946 GeoJSON is defined for geographic coordinates in WGS 84 / CRS84, and support for alternative coordinate reference systems was removed from the specification. That is a poor fit for planetary coordinate systems based on IAU definitions: writing Mars, Moon, or other planetary coordinates as ordinary GeoJSON could incorrectly imply Earth-based WGS 84 coordinates, or produce non-standard GeoJSON that different software may interpret inconsistently.
+
+For this reason, the 2D GIS outputs focus on formats that preserve CRS information more explicitly: GeoPackage (`.gpkg`) for most users and SpatiaLite (`.sqlite`) for SQLite-based spatial workflows.
 
 ## Usage
 
@@ -175,6 +214,7 @@ The output format is auto-detected from the file extension:
 | --------- | ------ |
 | `.gpkg` (default) | GeoPackage |
 | `.sqlite` / `.sqlite3` / `.spatialite` | SpatiaLite |
+| `.ply` | Python-only fitted 3D PLY |
 
 To override auto-detection, use `-f/--format`:
 
@@ -239,6 +279,59 @@ Rscript mkgraticule_planet.R -g 15 15 \
                              -srs IAU_2015:49900 \
                              mars_graticule.gpkg
 ```
+### 3D PLY fitted to an OBJ shape model (Python only)
+
+PLY output ray-casts latitude/longitude samples onto the input mesh. It assumes the mesh is centered on `--origin` and uses `+X = lon 0`, `+Y = lon 90E`, and `+Z = north`.
+
+The existing grid options are reused:
+
+- `-g xstep ystep`: meridian and parallel spacing in degrees
+- `-r xres yres`: longitude sampling for parallels and latitude sampling for meridians
+- `-e xmin ymax xmax ymin`: longitude/latitude range to fit
+
+Install an Embree binding such as `embreex` or `pyembree` for the fast ray path. Without Embree, the Python CLI uses the default `trimesh`/`rtree` ray intersector only for small jobs; larger jobs fail fast before ray casting because the fallback can allocate very large candidate arrays on irregular shape models. Pass `--allow-slow-raycast` only if you intentionally want to force that fallback.
+
+#### Python / GDAL (conda)
+```sh
+mkgraticule -f ply \
+            --input-mesh phobos_shape.obj \
+            -g 10 10 \
+            -r 1 1 \
+            -e 0 90 360 -90 \
+            --offset-fraction 0.0005 \
+            phobos_graticule_3d.ply
+```
+
+#### Python / GDAL (standalone)
+```sh
+python mkgraticule_planet.py -f ply \
+                             --input-mesh phobos_shape.obj \
+                             -g 10 10 \
+                             -r 1 1 \
+                             -e 0 90 360 -90 \
+                             --tube-radius 0.001 \
+                             phobos_graticule_3d.ply
+```
+
+`--tube-radius` writes a colored tube mesh instead of PLY edge primitives. PLY-specific command-line options are marked with `[PLY only]` in `--help`.
+
+#### Phobos MeshLab render example
+
+The image below shows a 30-degree fitted PLY tube graticule rendered in MeshLab on top of `phobos_g_296m_spc_obj_0000n00000_v004.obj`.
+
+```sh
+python standalone/mkgraticule_planet.py \
+  --mesh phobos_g_296m_spc_obj_0000n00000_v004.obj \
+  -g 30 30 \
+  --offset-distance 0.005 \
+  --tube-radius 0.02 \
+  --tube-segments 8 \
+  --color 40,40,40 \
+  phobos_latlon_30deg_tube_r002_o005.ply
+```
+
+![Phobos fitted 3D PLY graticule rendered in MeshLab](docs/phobos_ply_example.png)
+
 ### Major/minor graticules
 #### Python / GDAL (conda)
 ```sh

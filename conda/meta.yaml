@@ -1,4 +1,4 @@
-{% set version = "1.0.0" %}
+{% set version = "1.1.0" %}
 
 package:
   name: mkgraticule-planet
@@ -6,13 +6,14 @@ package:
 
 source:
   url: https://github.com/ryodohemmi/mkgraticule_planet/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: 5aa98afff3062d893f20a1ae8c30c0dd2b7b95cc72736ebc1a264392a5115b0a
+  # Add sha256 after the v{{ version }} GitHub release tarball is published.
 
 build:
   noarch: python
   number: 0
   script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
   entry_points:
+    - mkgraticule = mkgraticule_planet._cli:main
     - mkgraticule_planet = mkgraticule_planet._cli:main
 
 requirements:
@@ -24,17 +25,21 @@ requirements:
     - python >=3.9
     - numpy
     - gdal
+    - trimesh
+    - rtree
 
 test:
   imports:
     - mkgraticule_planet
   commands:
+    - mkgraticule --version
+    - mkgraticule --help
     - mkgraticule_planet --version
     - mkgraticule_planet --help
 
 about:
   home: https://github.com/ryodohemmi/mkgraticule_planet
-  summary: Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as GeoPackage or SpatiaLite
+  summary: Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as GeoPackage, SpatiaLite, or fitted 3D PLY
   license: Apache-2.0
   license_file: LICENSE
 

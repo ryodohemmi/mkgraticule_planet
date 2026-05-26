@@ -5,7 +5,7 @@
 mkgraticule_planet
 
 Create planetary-scale graticules with multi-format labels for any
-GDAL/PROJ-supported CRS — exported as GeoPackage or SpatiaLite.
+GDAL/PROJ-supported CRS — exported as GeoPackage, SpatiaLite, or fitted 3D PLY.
 
 Repository: https://github.com/ryodohemmi/mkgraticule_planet
 Citation:   Hemmi, R. (2026). mkgraticule_planet. Zenodo.
@@ -20,6 +20,7 @@ Example
 python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 180 -90 out.gpkg
 python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 180 -90 out.sqlite
 python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -f spatialite out.db
+python mkgraticule_planet.py -f ply --input-mesh shape.obj -g 10 10 -r 1 1 out.ply
 """
 
 # SPDX-License-Identifier: Apache-2.0
@@ -27,7 +28,7 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -f spatiali
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -45,10 +46,26 @@ import sys
 import argparse
 import sqlite3
 import re
+import time
 import numpy as np
 
 class CustomFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter, argparse.MetavarTypeHelpFormatter):
     pass
+
+def _parse_color(s):
+    parts = s.split(",")
+    if len(parts) != 3:
+        raise argparse.ArgumentTypeError("Color must be R,G,B, for example 255,255,255")
+
+    try:
+        values = tuple(int(p) for p in parts)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Color values must be integers") from exc
+
+    if any(v < 0 or v > 255 for v in values):
+        raise argparse.ArgumentTypeError("Color values must be in 0..255")
+
+    return values
 
 def get_args():
     parser = argparse.ArgumentParser(
@@ -65,12 +82,77 @@ def get_args():
         "-f",
         "--format",
         type=str,
-        choices=["gpkg", "spatialite"],
+        choices=["gpkg", "spatialite", "ply"],
         default=None,
-        help="Output format: 'gpkg' (GeoPackage) or 'spatialite' (SpatiaLite SQLite).\n"
+        help="Output format: 'gpkg' (GeoPackage), 'spatialite' (SpatiaLite SQLite),\n"
+             "or 'ply' (3D graticule fitted to an input mesh).\n"
              "Auto-detected from outfile extension if omitted:\n"
-             "  .gpkg -> gpkg, .sqlite -> spatialite.\n"
+             "  .gpkg -> gpkg, .sqlite -> spatialite, .ply -> ply.\n"
              "Defaults to gpkg if extension is ambiguous.",
+    )
+    ply_group = parser.add_argument_group("PLY fitted 3D graticule options")
+    ply_group.add_argument(
+        "--input-mesh",
+        "--mesh",
+        dest="input_mesh",
+        type=str,
+        default=None,
+        help="[PLY only] Input OBJ/mesh shape model. Required when output format is ply.",
+    )
+    ply_group.add_argument(
+        "--origin",
+        type=float,
+        nargs=3,
+        default=(0.0, 0.0, 0.0),
+        metavar=("X", "Y", "Z"),
+        help="[PLY only] Lat/lon origin in mesh coordinates for ray casting.",
+    )
+    ply_group.add_argument(
+        "--far-scale",
+        type=float,
+        default=3.0,
+        help="[PLY only] Ray start distance as a multiple of the mesh radius.",
+    )
+    ply_group.add_argument(
+        "--offset-distance",
+        type=float,
+        default=0.0,
+        help="[PLY only] Absolute outward offset applied to fitted vertices.",
+    )
+    ply_group.add_argument(
+        "--offset-fraction",
+        type=float,
+        default=0.0,
+        help="[PLY only] Outward offset as a fraction of the mesh radius.",
+    )
+    ply_group.add_argument(
+        "--batch-size",
+        type=int,
+        default=200000,
+        help="[PLY only] Ray-casting batch size.",
+    )
+    ply_group.add_argument(
+        "--allow-slow-raycast",
+        action="store_true",
+        help="[PLY only] Allow the default trimesh/rtree ray intersector when Embree is unavailable.",
+    )
+    ply_group.add_argument(
+        "--color",
+        type=_parse_color,
+        default=(255, 255, 255),
+        help="[PLY only] Color as R,G,B.",
+    )
+    ply_group.add_argument(
+        "--tube-radius",
+        type=float,
+        default=0.0,
+        help="[PLY only] If > 0, write tube mesh instead of edge primitives.",
+    )
+    ply_group.add_argument(
+        "--tube-segments",
+        type=int,
+        default=8,
+        help="[PLY only] Number of radial segments for tube cross-sections.",
     )
 
     parser.add_argument(
@@ -185,6 +267,14 @@ def get_args():
         parser.error(f"xstep must be <= 360 (got {xstep}).")
     if ystep > 180:
         parser.error(f"ystep must be <= 180 (got {ystep}).")
+    if args.far_scale <= 0:
+        parser.error(f"far-scale must be > 0 (got {args.far_scale}).")
+    if args.batch_size <= 0:
+        parser.error(f"batch-size must be > 0 (got {args.batch_size}).")
+    if args.tube_radius < 0:
+        parser.error(f"tube-radius must be >= 0 (got {args.tube_radius}).")
+    if args.tube_segments < 3:
+        parser.error(f"tube-segments must be >= 3 (got {args.tube_segments}).")
 
     ulx, uly, lrx, lry = args.extent
     if ulx >= lrx:
@@ -303,6 +393,7 @@ _EXT_FORMAT_MAP = {
     ".sqlite": "spatialite",
     ".sqlite3": "spatialite",
     ".spatialite": "spatialite",
+    ".ply": "ply",
 }
 
 def _resolve_output_format(outfile, fmt_flag):
@@ -318,6 +409,8 @@ def _resolve_output_format(outfile, fmt_flag):
 
     if fmt == "spatialite":
         return ("spatialite", "SQLite", ".spatialite", ["SPATIALITE=YES"], False)
+    if fmt == "ply":
+        return ("ply", None, ".ply", [], False)
     return ("gpkg", "GPKG", ".gpkg", ["ADD_GPKG_OGR_CONTENTS=NO"], True)
 
 
@@ -685,6 +778,514 @@ def _collapsed_target_point(sample_coords, ct, tol=1e-8, min_ok_points=1):
 
     return False, None
 
+def _sph_to_cart_batch(lat_deg, lon_deg):
+    lat = np.deg2rad(lat_deg)
+    lon = np.deg2rad(lon_deg)
+
+    x = np.cos(lat) * np.cos(lon)
+    y = np.cos(lat) * np.sin(lon)
+    z = np.sin(lat)
+
+    v = np.column_stack([x, y, z]).astype(np.float64)
+    n = np.linalg.norm(v, axis=1)
+    return v / n[:, None]
+
+
+def _load_mesh(path):
+    try:
+        import trimesh
+    except ImportError as exc:
+        raise RuntimeError("PLY output requires the 'trimesh' Python package.") from exc
+
+    mesh = trimesh.load(path, force="mesh", process=False)
+    if not isinstance(mesh, trimesh.Trimesh):
+        raise TypeError("Input mesh could not be loaded as a single Trimesh.")
+    mesh.remove_unreferenced_vertices()
+    mesh.process(validate=False)
+    return mesh
+
+
+def _get_mesh_intersector(mesh):
+    try:
+        from trimesh.ray.ray_pyembree import RayMeshIntersector
+        print("[INFO] Using Embree ray intersector: trimesh.ray.ray_pyembree")
+        return RayMeshIntersector(mesh), "embree"
+    except Exception as exc:
+        print("[WARN] Embree intersector is not available.")
+        print(f"[WARN] Embree import failed: {exc}")
+        try:
+            import rtree  # noqa: F401
+        except ImportError as rtree_exc:
+            raise RuntimeError(
+                "Embree is unavailable and the default trimesh ray intersector requires 'rtree'. "
+                "For PLY shape-model jobs, install the Embree fast path with 'pip install embreex' "
+                "or, on Linux/WSL/macOS conda environments, 'conda install -c conda-forge pyembree'. "
+                "Use 'conda install -c conda-forge rtree' only for small fallback jobs."
+            ) from rtree_exc
+        print("[WARN] Falling back to trimesh default ray intersector. This can be slow and memory-heavy.")
+        return mesh.ray, "default"
+
+
+def _estimate_radius_from_origin(mesh, origin):
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    r = np.linalg.norm(vertices - origin[None, :], axis=1)
+    return float(np.max(r))
+
+
+def _raycast_surface_points(
+    intersector,
+    directions,
+    origin_xyz,
+    far_distance,
+    offset_distance=0.0,
+    batch_size=200000,
+):
+    n = len(directions)
+    points = np.full((n, 3), np.nan, dtype=np.float64)
+    hit_mask = np.zeros(n, dtype=bool)
+
+    for start in range(0, n, batch_size):
+        end = min(start + batch_size, n)
+
+        d = directions[start:end]
+        ray_origins = origin_xyz[None, :] + d * far_distance
+        ray_dirs = -d
+
+        locations, index_ray, index_tri = intersector.intersects_location(
+            ray_origins=ray_origins,
+            ray_directions=ray_dirs,
+            multiple_hits=False,
+        )
+
+        if len(locations) == 0:
+            continue
+
+        global_indices = start + index_ray
+
+        if offset_distance != 0.0:
+            locations = locations + directions[global_indices] * offset_distance
+
+        points[global_indices] = locations
+        hit_mask[global_indices] = True
+
+    return points, hit_mask
+
+
+def _make_ply_latitude_specs(grid_step, sample_step, lat_min, lat_max, lon_min, lon_max):
+    lat_values = np.arange(lat_min, lat_max + 1e-12, grid_step, dtype=float)
+    full_lon_span = abs((lon_max - lon_min) - 360.0) < 1e-9
+    if full_lon_span:
+        lon_values = np.arange(lon_min, lon_max, sample_step, dtype=float)
+    else:
+        lon_values = np.arange(lon_min, lon_max + 1e-12, sample_step, dtype=float)
+
+    specs = []
+    for lat in lat_values:
+        specs.append({
+            "kind": "lat",
+            "value": float(lat),
+            "lat": np.full_like(lon_values, lat, dtype=np.float64),
+            "lon": lon_values.copy(),
+            "wrap": full_lon_span,
+        })
+
+    return specs
+
+
+def _make_ply_longitude_specs(grid_step, sample_step, lon_min, lon_max, lat_min, lat_max, drop_duplicate_endpoint):
+    lon_values = np.arange(lon_min, lon_max + 1e-12, grid_step, dtype=float)
+    if drop_duplicate_endpoint and abs((lon_max - lon_min) - 360.0) < 1e-9 and lon_values.size > 1:
+        if abs(lon_values[0] - lon_min) < 1e-9 and abs(lon_values[-1] - lon_max) < 1e-9:
+            lon_values = lon_values[:-1]
+
+    lat_values = np.arange(lat_min, lat_max + 1e-12, sample_step, dtype=float)
+
+    specs = []
+    for lon in lon_values:
+        specs.append({
+            "kind": "lon",
+            "value": float(lon),
+            "lat": lat_values.copy(),
+            "lon": np.full_like(lat_values, lon, dtype=np.float64),
+            "wrap": False,
+        })
+
+    return specs
+
+
+def _build_all_ply_rays(line_specs):
+    all_lat = []
+    all_lon = []
+    ranges = []
+
+    cursor = 0
+    for spec in line_specs:
+        lat = spec["lat"]
+        lon = spec["lon"]
+        n = len(lat)
+
+        if n == 0:
+            continue
+
+        all_lat.append(lat)
+        all_lon.append(lon)
+        ranges.append((cursor, cursor + n))
+        cursor += n
+
+    if not all_lat:
+        return np.empty((0, 3), dtype=np.float64), ranges
+
+    all_lat = np.concatenate(all_lat)
+    all_lon = np.concatenate(all_lon)
+    directions = _sph_to_cart_batch(all_lat, all_lon)
+
+    return directions, ranges
+
+
+def _build_ply_polyline_indices(hit_mask, ranges, line_specs):
+    polylines = []
+
+    for (start, end), spec in zip(ranges, line_specs):
+        indices = np.arange(start, end)
+        valid = hit_mask[indices]
+
+        current = []
+        for idx, ok in zip(indices, valid):
+            if ok:
+                current.append(int(idx))
+            else:
+                if len(current) >= 2:
+                    polylines.append(current)
+                current = []
+
+        if len(current) >= 2:
+            if spec["wrap"] and bool(np.all(valid)):
+                current = current + [current[0]]
+            polylines.append(current)
+
+    return polylines
+
+
+def _build_ply_vertices_and_edges(points, hit_mask, ranges, line_specs):
+    valid_global = np.where(hit_mask)[0]
+    vertices = points[valid_global]
+
+    vertex_index = np.full(len(points), -1, dtype=np.int64)
+    vertex_index[valid_global] = np.arange(len(valid_global), dtype=np.int64)
+
+    edges = []
+    polylines_global = _build_ply_polyline_indices(hit_mask, ranges, line_specs)
+
+    for line in polylines_global:
+        for a, b in zip(line[:-1], line[1:]):
+            edges.append((int(vertex_index[a]), int(vertex_index[b])))
+
+    return vertices, edges, polylines_global
+
+
+def _make_tube_mesh_from_polylines(points, polylines_global, radius, segments=8):
+    tube_vertices = []
+    tube_faces = []
+
+    def normalize(v):
+        n = np.linalg.norm(v)
+        if n == 0:
+            return v
+        return v / n
+
+    for line in polylines_global:
+        pts = points[np.asarray(line, dtype=np.int64)]
+
+        valid = np.all(np.isfinite(pts), axis=1)
+        pts = pts[valid]
+        if len(pts) < 2:
+            continue
+
+        closed = np.linalg.norm(pts[0] - pts[-1]) < radius * 1e-3
+        if closed:
+            pts_work = pts[:-1]
+        else:
+            pts_work = pts
+
+        if len(pts_work) < 2:
+            continue
+
+        n_pts = len(pts_work)
+
+        tangents = np.zeros_like(pts_work)
+        for i in range(n_pts):
+            if i == 0:
+                tangents[i] = normalize(pts_work[1] - pts_work[0])
+            elif i == n_pts - 1:
+                tangents[i] = normalize(pts_work[-1] - pts_work[-2])
+            else:
+                tangents[i] = normalize(pts_work[i + 1] - pts_work[i - 1])
+
+        t0 = tangents[0]
+        ref = np.array([0.0, 0.0, 1.0])
+        if abs(np.dot(t0, ref)) > 0.9:
+            ref = np.array([0.0, 1.0, 0.0])
+
+        n0 = normalize(np.cross(t0, ref))
+        b0 = normalize(np.cross(t0, n0))
+
+        normals = np.zeros_like(pts_work)
+        binormals = np.zeros_like(pts_work)
+        normals[0] = n0
+        binormals[0] = b0
+
+        for i in range(1, n_pts):
+            t = tangents[i]
+
+            nvec = normals[i - 1] - np.dot(normals[i - 1], t) * t
+            if np.linalg.norm(nvec) < 1e-12:
+                ref = np.array([0.0, 0.0, 1.0])
+                if abs(np.dot(t, ref)) > 0.9:
+                    ref = np.array([0.0, 1.0, 0.0])
+                nvec = np.cross(t, ref)
+
+            nvec = normalize(nvec)
+            bvec = normalize(np.cross(t, nvec))
+
+            normals[i] = nvec
+            binormals[i] = bvec
+
+        start_index = len(tube_vertices)
+        angles = np.linspace(0.0, 2.0 * np.pi, segments, endpoint=False)
+
+        for i in range(n_pts):
+            center = pts_work[i]
+            nvec = normals[i]
+            bvec = binormals[i]
+
+            for a in angles:
+                p = center + radius * (np.cos(a) * nvec + np.sin(a) * bvec)
+                tube_vertices.append(p)
+
+        ring_count = n_pts
+        if closed:
+            segment_pairs = [(i, (i + 1) % ring_count) for i in range(ring_count)]
+        else:
+            segment_pairs = [(i, i + 1) for i in range(ring_count - 1)]
+
+        for i, j in segment_pairs:
+            for k in range(segments):
+                k2 = (k + 1) % segments
+
+                a = start_index + i * segments + k
+                b = start_index + i * segments + k2
+                c = start_index + j * segments + k2
+                d = start_index + j * segments + k
+
+                tube_faces.append((a, b, c))
+                tube_faces.append((a, c, d))
+
+        if not closed:
+            c0 = len(tube_vertices)
+            tube_vertices.append(pts_work[0])
+            c1 = len(tube_vertices)
+            tube_vertices.append(pts_work[-1])
+
+            for k in range(segments):
+                k2 = (k + 1) % segments
+
+                a = start_index + k
+                b = start_index + k2
+                tube_faces.append((c0, b, a))
+
+                a2 = start_index + (ring_count - 1) * segments + k
+                b2 = start_index + (ring_count - 1) * segments + k2
+                tube_faces.append((c1, a2, b2))
+
+    return np.asarray(tube_vertices, dtype=np.float64), np.asarray(tube_faces, dtype=np.int64)
+
+
+def _write_ply_edges(path, vertices, edges, color):
+    r, g, b = color
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("ply\n")
+        f.write("format ascii 1.0\n")
+        f.write("comment fitted latitude-longitude grid generated by ray intersection\n")
+        f.write(f"element vertex {len(vertices)}\n")
+        f.write("property float x\n")
+        f.write("property float y\n")
+        f.write("property float z\n")
+        f.write(f"element edge {len(edges)}\n")
+        f.write("property int vertex1\n")
+        f.write("property int vertex2\n")
+        f.write("property uchar red\n")
+        f.write("property uchar green\n")
+        f.write("property uchar blue\n")
+        f.write("end_header\n")
+
+        for v in vertices:
+            f.write(f"{v[0]:.9f} {v[1]:.9f} {v[2]:.9f}\n")
+
+        for i, j in edges:
+            f.write(f"{i} {j} {r} {g} {b}\n")
+
+
+def _write_ply_mesh(path, vertices, faces, color):
+    r, g, b = color
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("ply\n")
+        f.write("format ascii 1.0\n")
+        f.write("comment fitted latitude-longitude tube mesh generated by ray intersection\n")
+        f.write(f"element vertex {len(vertices)}\n")
+        f.write("property float x\n")
+        f.write("property float y\n")
+        f.write("property float z\n")
+        f.write("property uchar red\n")
+        f.write("property uchar green\n")
+        f.write("property uchar blue\n")
+        f.write(f"element face {len(faces)}\n")
+        f.write("property list uchar int vertex_indices\n")
+        f.write("end_header\n")
+
+        for v in vertices:
+            f.write(f"{v[0]:.9f} {v[1]:.9f} {v[2]:.9f} {r} {g} {b}\n")
+
+        for a, b_, c in faces:
+            f.write(f"3 {a} {b_} {c}\n")
+
+
+def _guard_slow_ply_raycast(engine_name, args, mesh, sample_count):
+    if engine_name == "embree" or args.allow_slow_raycast:
+        return
+
+    ray_face_product = int(sample_count) * int(len(mesh.faces))
+    max_default_ray_face_product = 50_000_000
+    if ray_face_product <= max_default_ray_face_product:
+        return
+
+    raise RuntimeError(
+        "Embree is unavailable and this PLY job is too large for the default trimesh/rtree ray intersector.\n"
+        f"Samples: {sample_count}, mesh faces: {len(mesh.faces)}, samples*faces: {ray_face_product:,}.\n"
+        "The fallback can allocate very large candidate arrays on irregular shape models.\n"
+        "Install Embree acceleration with 'pip install embreex' or, on Linux/WSL/macOS conda environments, "
+        "'conda install -c conda-forge pyembree'.\n"
+        "Alternatively reduce sampling density with -r, or pass --allow-slow-raycast to force the fallback."
+    )
+
+
+def _write_fitted_latlon_ply(args, outfile):
+    if args.input_mesh is None:
+        raise RuntimeError("PLY output requires --input-mesh/--mesh.")
+
+    t0 = time.perf_counter()
+
+    xstep, ystep = args.grid
+    xres, yres = args.res
+    ulx, uly, lrx, lry = args.extent
+
+    lon_min = min(ulx, lrx)
+    lon_max = max(ulx, lrx)
+    lat_min = min(lry, uly)
+    lat_max = max(lry, uly)
+
+    print(f"[INFO] Loading mesh: {args.input_mesh}")
+    mesh = _load_mesh(args.input_mesh)
+
+    print(f"[INFO] Mesh vertices: {len(mesh.vertices)}")
+    print(f"[INFO] Mesh faces:    {len(mesh.faces)}")
+
+    origin = np.asarray(args.origin, dtype=np.float64)
+    max_radius = _estimate_radius_from_origin(mesh, origin)
+    far_distance = max_radius * args.far_scale
+    offset_distance = args.offset_distance + max_radius * args.offset_fraction
+
+    print(f"[INFO] Lat/lon origin:     {origin}")
+    print(f"[INFO] Max radius:         {max_radius:.9g}")
+    print(f"[INFO] Ray far distance:   {far_distance:.9g}")
+    print(f"[INFO] Offset distance:    {offset_distance:.9g}")
+
+    t1 = time.perf_counter()
+    intersector, engine_name = _get_mesh_intersector(mesh)
+    t2 = time.perf_counter()
+
+    lat_specs = _make_ply_latitude_specs(
+        grid_step=ystep,
+        sample_step=xres,
+        lat_min=lat_min,
+        lat_max=lat_max,
+        lon_min=lon_min,
+        lon_max=lon_max,
+    )
+    lon_specs = _make_ply_longitude_specs(
+        grid_step=xstep,
+        sample_step=yres,
+        lon_min=lon_min,
+        lon_max=lon_max,
+        lat_min=lat_min,
+        lat_max=lat_max,
+        drop_duplicate_endpoint=args.no_duplicate_endpoint,
+    )
+
+    line_specs = lat_specs + lon_specs
+    directions, ranges = _build_all_ply_rays(line_specs)
+    if len(directions) == 0:
+        raise RuntimeError("No PLY ray samples were generated.")
+
+    print(f"[INFO] Latitude lines:  {len(lat_specs)}")
+    print(f"[INFO] Longitude lines: {len(lon_specs)}")
+    print(f"[INFO] Total samples:   {len(directions)}")
+    _guard_slow_ply_raycast(engine_name, args, mesh, len(directions))
+
+    t3 = time.perf_counter()
+    points, hit_mask = _raycast_surface_points(
+        intersector=intersector,
+        directions=directions,
+        origin_xyz=origin,
+        far_distance=far_distance,
+        offset_distance=offset_distance,
+        batch_size=args.batch_size,
+    )
+
+    n_hit = int(np.count_nonzero(hit_mask))
+    n_miss = int(len(hit_mask) - n_hit)
+
+    print(f"[INFO] Ray hits:   {n_hit}")
+    print(f"[INFO] Ray misses: {n_miss}")
+
+    t4 = time.perf_counter()
+    vertices, edges, polylines_global = _build_ply_vertices_and_edges(
+        points=points,
+        hit_mask=hit_mask,
+        ranges=ranges,
+        line_specs=line_specs,
+    )
+
+    print(f"[INFO] Polyline vertices: {len(vertices)}")
+    print(f"[INFO] Polyline edges:    {len(edges)}")
+    print(f"[INFO] Polyline parts:    {len(polylines_global)}")
+
+    if args.tube_radius > 0.0:
+        print(f"[INFO] Building tube mesh: radius={args.tube_radius}, segments={args.tube_segments}")
+        tube_vertices, tube_faces = _make_tube_mesh_from_polylines(
+            points=points,
+            polylines_global=polylines_global,
+            radius=args.tube_radius,
+            segments=args.tube_segments,
+        )
+
+        print(f"[INFO] Tube vertices: {len(tube_vertices)}")
+        print(f"[INFO] Tube faces:    {len(tube_faces)}")
+        _write_ply_mesh(outfile, tube_vertices, tube_faces, args.color)
+    else:
+        _write_ply_edges(outfile, vertices, edges, args.color)
+
+    t5 = time.perf_counter()
+
+    print(f"[DONE] Wrote: {outfile}")
+    print("[TIME] load mesh:        %.3f s" % (t1 - t0))
+    print("[TIME] build intersector %.3f s  (%s)" % (t2 - t1, engine_name))
+    print("[TIME] build rays:       %.3f s" % (t3 - t2))
+    print("[TIME] raycast:          %.3f s" % (t4 - t3))
+    print("[TIME] build/write out:  %.3f s" % (t5 - t4))
+    print("[TIME] total:            %.3f s" % (t5 - t0))
+
 def _ensure_point_layer(ds_mem, point_layer, point_layer_name, srs_target):
     """
     Lazily create a companion point layer in the TARGET CRS.
@@ -790,6 +1391,10 @@ def main():
     outdir = os.path.dirname(outfile)
     if outdir:
         os.makedirs(outdir, exist_ok=True)
+
+    if fmt_key == "ply":
+        _write_fitted_latlon_ply(args, outfile)
+        return
 
     drv_out = ogr.GetDriverByName(ogr_driver_name)
     if drv_out is None:

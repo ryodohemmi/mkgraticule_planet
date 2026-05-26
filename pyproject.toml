@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mkgraticule_planet"
-version = "1.0.1"
-description = "Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as GeoPackage or SpatiaLite"
+version = "1.1.0"
+description = "Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS — exported as GeoPackage, SpatiaLite, or fitted 3D PLY"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.9"
@@ -35,6 +35,13 @@ classifiers = [
 dependencies = [
     "numpy",
     "GDAL",
+    "trimesh",
+    "rtree",
+]
+
+[project.optional-dependencies]
+embree = [
+    "embreex",
 ]
 
 [project.urls]
