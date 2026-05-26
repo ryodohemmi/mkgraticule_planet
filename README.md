@@ -463,6 +463,8 @@ The existing grid options are reused:
 - `-r xres yres`: longitude sampling for parallels and latitude sampling for meridians
 - `-e xmin ymax xmax ymin`: longitude/latitude range to fit
 
+Examples below use `--input-mesh`; `--mesh` is accepted as a shorter alias. Use `--offset-distance` for an absolute outward offset, or `--offset-fraction` for an offset relative to the mesh radius.
+
 Install an Embree binding for the fast ray path; as of May 2026, `pip install embreex` is recommended for current Python versions. Without Embree, the Python CLI uses the default `trimesh`/`rtree` ray intersector only for small jobs; larger jobs fail fast before ray casting because the fallback can allocate very large candidate arrays on irregular shape models. Pass `--allow-slow-raycast` only if you intentionally want to force that fallback.
 
 ### Python / GDAL (conda)
@@ -472,7 +474,7 @@ mkgraticule -f ply \
             -g 10 10 \
             -r 1 1 \
             -e 0 90 360 -90 \
-            --offset-fraction 0.0005 \
+            --offset-distance 0.005 \
             phobos_graticule_3d.ply
 ```
 
@@ -483,6 +485,7 @@ python mkgraticule_planet.py -f ply \
                              -g 10 10 \
                              -r 1 1 \
                              -e 0 90 360 -90 \
+                             --offset-distance 0.005 \
                              --tube-radius 0.001 \
                              phobos_graticule_3d.ply
 ```
@@ -495,7 +498,7 @@ The image below shows a 30-degree fitted PLY tube graticule rendered in MeshLab 
 
 ```sh
 python standalone/mkgraticule_planet.py \
-  --mesh phobos_g_296m_spc_obj_0000n00000_v004.obj \
+  --input-mesh phobos_g_296m_spc_obj_0000n00000_v004.obj \
   -g 30 30 \
   --offset-distance 0.005 \
   --tube-radius 0.02 \
