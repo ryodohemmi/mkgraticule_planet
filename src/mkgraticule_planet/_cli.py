@@ -20,7 +20,7 @@ Example
 python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 180 -90 out.gpkg
 python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 180 -90 out.sqlite
 python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -f spatialite out.db
-python mkgraticule_planet.py -f ply --input-mesh shape.obj -g 10 10 -r 1 1 out.ply
+python mkgraticule_planet.py -f ply -mesh shape.obj -g 10 10 -r 1 1 out.ply
 """
 
 # SPDX-License-Identifier: Apache-2.0
@@ -28,7 +28,7 @@ python mkgraticule_planet.py -f ply --input-mesh shape.obj -g 10 10 -r 1 1 out.p
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -44,6 +44,7 @@ gdal.UseExceptions()
 import os
 import sys
 import argparse
+import difflib
 import sqlite3
 import re
 import time
@@ -66,6 +67,52 @@ def _parse_color(s):
         raise argparse.ArgumentTypeError("Color values must be in 0..255")
 
     return values
+
+def _is_negative_number_token(s):
+    if not s.startswith("-") or s in ("-", "--"):
+        return False
+    try:
+        float(s)
+    except ValueError:
+        return False
+    return True
+
+def _reject_unknown_option_tokens(parser, argv):
+    option_strings = set(parser._option_string_actions)
+    visible_options = [
+        option
+        for option, action in parser._option_string_actions.items()
+        if action.help is not argparse.SUPPRESS
+    ]
+
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--":
+            break
+        if not token.startswith("-") or token == "-" or _is_negative_number_token(token):
+            i += 1
+            continue
+
+        option = token.split("=", 1)[0] if token.startswith("--") else token
+        if option in option_strings:
+            action = parser._option_string_actions[option]
+            if action.nargs == 0 or token.startswith("--") and "=" in token:
+                i += 1
+                continue
+
+            nargs = action.nargs if action.nargs is not None else 1
+            if isinstance(nargs, int):
+                i += 1 + nargs
+            else:
+                i += 1
+            continue
+
+        message = f"unrecognized option: {option}"
+        suggestion = difflib.get_close_matches(option, visible_options, n=1, cutoff=0.72)
+        if suggestion:
+            message += f" (did you mean {suggestion[0]}?)"
+        parser.error(message)
 
 def get_args():
     parser = argparse.ArgumentParser(
@@ -93,14 +140,23 @@ def get_args():
     ply_group = parser.add_argument_group("PLY fitted 3D graticule options")
     ply_group.add_argument(
         "--input-mesh",
-        "--mesh",
+        "-mesh",
         dest="input_mesh",
         type=str,
         default=None,
         help="[PLY only] Input OBJ/mesh shape model. Required when output format is ply.",
     )
     ply_group.add_argument(
-        "--origin",
+        "--mesh",
+        dest="input_mesh",
+        type=str,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    ply_group.add_argument(
+        "--ray-orig",
+        "-rorig",
+        dest="origin",
         type=float,
         nargs=3,
         default=(0.0, 0.0, 0.0),
@@ -108,51 +164,125 @@ def get_args():
         help="[PLY only] Lat/lon origin in mesh coordinates for ray casting.",
     )
     ply_group.add_argument(
-        "--far-scale",
+        "--origin",
+        dest="origin",
+        type=float,
+        nargs=3,
+        default=argparse.SUPPRESS,
+        metavar=("X", "Y", "Z"),
+        help=argparse.SUPPRESS,
+    )
+    ply_group.add_argument(
+        "--ray-scale",
+        "-rscale",
+        dest="far_scale",
         type=float,
         default=3.0,
         help="[PLY only] Ray start distance as a multiple of the mesh radius.",
     )
     ply_group.add_argument(
-        "--offset-distance",
+        "--far-scale",
+        dest="far_scale",
         type=float,
-        default=0.0,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    offset_group = ply_group.add_mutually_exclusive_group()
+    offset_group.add_argument(
+        "--offset-distance",
+        "-odist",
+        type=float,
+        default=argparse.SUPPRESS,
         help="[PLY only] Absolute outward offset applied to fitted vertices.",
     )
-    ply_group.add_argument(
+    offset_group.add_argument(
         "--offset-fraction",
+        "-ofrac",
         type=float,
-        default=0.0,
+        default=argparse.SUPPRESS,
         help="[PLY only] Outward offset as a fraction of the mesh radius.",
     )
+    offset_group.add_argument(
+        "-ofract",
+        dest="offset_fraction",
+        type=float,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
     ply_group.add_argument(
-        "--batch-size",
+        "--ray-batch",
+        "-rbatch",
+        dest="batch_size",
         type=int,
         default=200000,
         help="[PLY only] Ray-casting batch size.",
     )
     ply_group.add_argument(
-        "--allow-slow-raycast",
+        "--batch-size",
+        dest="batch_size",
+        type=int,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    ply_group.add_argument(
+        "--ray-slow",
+        "-rslow",
+        dest="allow_slow_raycast",
         action="store_true",
+        default=False,
         help="[PLY only] Allow the default trimesh/rtree ray intersector when Embree is unavailable.",
     )
     ply_group.add_argument(
-        "--color",
+        "--allow-slow-raycast",
+        dest="allow_slow_raycast",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    ply_group.add_argument(
+        "--ply-rgb",
+        "-prgb",
+        dest="color",
         type=_parse_color,
         default=(255, 255, 255),
         help="[PLY only] Color as R,G,B.",
     )
     ply_group.add_argument(
-        "--tube-radius",
+        "--color",
+        dest="color",
+        type=_parse_color,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    ply_group.add_argument(
+        "--tube-rad",
+        "-trad",
+        dest="tube_radius",
         type=float,
         default=0.0,
         help="[PLY only] If > 0, write tube mesh instead of edge primitives.",
     )
     ply_group.add_argument(
-        "--tube-segments",
+        "--tube-radius",
+        dest="tube_radius",
+        type=float,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    ply_group.add_argument(
+        "--tube-seg",
+        "-tseg",
+        dest="tube_segments",
         type=int,
         default=8,
         help="[PLY only] Number of radial segments for tube cross-sections.",
+    )
+    ply_group.add_argument(
+        "--tube-segments",
+        dest="tube_segments",
+        type=int,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
     )
 
     parser.add_argument(
@@ -255,6 +385,9 @@ def get_args():
         help="Overwrite the 2nd standard parallel in the target projected CRS (degrees).",
     )
 
+    parser.set_defaults(offset_distance=0.0, offset_fraction=0.0)
+
+    _reject_unknown_option_tokens(parser, sys.argv[1:])
     args = parser.parse_args()
 
     xstep, ystep = args.grid
@@ -268,13 +401,13 @@ def get_args():
     if ystep > 180:
         parser.error(f"ystep must be <= 180 (got {ystep}).")
     if args.far_scale <= 0:
-        parser.error(f"far-scale must be > 0 (got {args.far_scale}).")
+        parser.error(f"ray-scale must be > 0 (got {args.far_scale}).")
     if args.batch_size <= 0:
-        parser.error(f"batch-size must be > 0 (got {args.batch_size}).")
+        parser.error(f"ray-batch must be > 0 (got {args.batch_size}).")
     if args.tube_radius < 0:
-        parser.error(f"tube-radius must be >= 0 (got {args.tube_radius}).")
+        parser.error(f"tube-rad must be >= 0 (got {args.tube_radius}).")
     if args.tube_segments < 3:
-        parser.error(f"tube-segments must be >= 3 (got {args.tube_segments}).")
+        parser.error(f"tube-seg must be >= 3 (got {args.tube_segments}).")
 
     ulx, uly, lrx, lry = args.extent
     if ulx >= lrx:
@@ -1166,13 +1299,13 @@ def _guard_slow_ply_raycast(engine_name, args, mesh, sample_count):
         "The fallback can allocate very large candidate arrays on irregular shape models.\n"
         "Install Embree acceleration with 'pip install embreex' or, on Linux/WSL/macOS conda environments, "
         "'conda install -c conda-forge pyembree'.\n"
-        "Alternatively reduce sampling density with -r, or pass --allow-slow-raycast to force the fallback."
+        "Alternatively reduce sampling density with -r, or pass --ray-slow to force the fallback."
     )
 
 
 def _write_fitted_latlon_ply(args, outfile):
     if args.input_mesh is None:
-        raise RuntimeError("PLY output requires --input-mesh/--mesh.")
+        raise RuntimeError("PLY output requires --input-mesh/-mesh.")
 
     t0 = time.perf_counter()
 

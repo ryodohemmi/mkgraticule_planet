@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] - 2026-05-26
+
+### Changed
+- Added shorter PLY command-line aliases and updated README examples to use them.
+- Kept the previous PLY option names as compatibility aliases.
+- Made absolute and fractional PLY offsets mutually exclusive.
+- Report unknown option-looking tokens before argparse can reinterpret short-option typos.
+- Updated Python package and standalone script versions to `1.1.1`.
+
 ## [1.1.0] - 2026-05-26
 
 ### Added

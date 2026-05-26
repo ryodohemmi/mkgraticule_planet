@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "1.1.0"
+VERSION <- "1.1.1"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
