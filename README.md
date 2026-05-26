@@ -141,13 +141,13 @@ conda env create -f docs/setup/phobos-latlon-grid.yml
 conda activate phobos-latlon-grid
 ```
 
-Embree acceleration is strongly recommended for shape-model PLY output. The `trimesh`/`rtree` fallback is useful for small jobs, but can require very large temporary arrays on irregular meshes.
+Embree acceleration is strongly recommended for shape-model PLY output. The `trimesh`/`rtree` fallback is useful for small jobs, but can require very large temporary arrays on irregular meshes. As of May 2026, `pip install embreex` is the recommended Embree path for current Python versions.
 
 ```sh
 pip install embreex
 ```
 
-For Linux, WSL, or macOS conda environments, `pyembree` is also available from conda-forge:
+`pyembree` is also available from conda-forge, but its package builds may lag behind current Python versions:
 
 ```sh
 conda install -c conda-forge pyembree
@@ -461,7 +461,7 @@ The existing grid options are reused:
 - `-r xres yres`: longitude sampling for parallels and latitude sampling for meridians
 - `-e xmin ymax xmax ymin`: longitude/latitude range to fit
 
-Install an Embree binding such as `embreex` or `pyembree` for the fast ray path. Without Embree, the Python CLI uses the default `trimesh`/`rtree` ray intersector only for small jobs; larger jobs fail fast before ray casting because the fallback can allocate very large candidate arrays on irregular shape models. Pass `--allow-slow-raycast` only if you intentionally want to force that fallback.
+Install an Embree binding for the fast ray path; as of May 2026, `pip install embreex` is recommended for current Python versions. Without Embree, the Python CLI uses the default `trimesh`/`rtree` ray intersector only for small jobs; larger jobs fail fast before ray casting because the fallback can allocate very large candidate arrays on irregular shape models. Pass `--allow-slow-raycast` only if you intentionally want to force that fallback.
 
 ### Python / GDAL (conda)
 ```sh
