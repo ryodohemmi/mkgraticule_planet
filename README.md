@@ -23,6 +23,7 @@ The fitted 3D PLY output for OBJ/mesh shape models is available in the Python im
 - [Planetary CRS](#planetary-crs)
 - [QGIS examples](#qgis-examples)
 - [Output fields](#output-fields)
+- [3D PLY fitted to an OBJ shape model (Python only)](#3d-ply-fitted-to-an-obj-shape-model-python-only)
 - [Acknowledgement](#acknowledgement)
 - [Citation](#citation)
 - [License](#license)
@@ -174,6 +175,8 @@ For the rationale behind the graticule-generation workflow and a comparison with
 
 Shapefile is still widely supported, but it is an old multi-file format with strict field-name limits, fragile character encoding behavior, file-size constraints, and weak self-contained metadata handling. These issues are especially undesirable for planetary GIS data, where the coordinate reference system should be preserved clearly and unambiguously. If Shapefile output is required for legacy software, export a GeoPackage first and convert it with GDAL/OGR:
 
+For background on Shapefile limitations, see [Switch from Shapefile](http://switchfromshapefile.org/).
+
 ```sh
 ogr2ogr -f "ESRI Shapefile" output_shapefile input.gpkg
 ```
@@ -279,59 +282,6 @@ Rscript mkgraticule_planet.R -g 15 15 \
                              -srs IAU_2015:49900 \
                              mars_graticule.gpkg
 ```
-### 3D PLY fitted to an OBJ shape model (Python only)
-
-PLY output ray-casts latitude/longitude samples onto the input mesh. It assumes the mesh is centered on `--origin` and uses `+X = lon 0`, `+Y = lon 90E`, and `+Z = north`.
-
-The existing grid options are reused:
-
-- `-g xstep ystep`: meridian and parallel spacing in degrees
-- `-r xres yres`: longitude sampling for parallels and latitude sampling for meridians
-- `-e xmin ymax xmax ymin`: longitude/latitude range to fit
-
-Install an Embree binding such as `embreex` or `pyembree` for the fast ray path. Without Embree, the Python CLI uses the default `trimesh`/`rtree` ray intersector only for small jobs; larger jobs fail fast before ray casting because the fallback can allocate very large candidate arrays on irregular shape models. Pass `--allow-slow-raycast` only if you intentionally want to force that fallback.
-
-#### Python / GDAL (conda)
-```sh
-mkgraticule -f ply \
-            --input-mesh phobos_shape.obj \
-            -g 10 10 \
-            -r 1 1 \
-            -e 0 90 360 -90 \
-            --offset-fraction 0.0005 \
-            phobos_graticule_3d.ply
-```
-
-#### Python / GDAL (standalone)
-```sh
-python mkgraticule_planet.py -f ply \
-                             --input-mesh phobos_shape.obj \
-                             -g 10 10 \
-                             -r 1 1 \
-                             -e 0 90 360 -90 \
-                             --tube-radius 0.001 \
-                             phobos_graticule_3d.ply
-```
-
-`--tube-radius` writes a colored tube mesh instead of PLY edge primitives. PLY-specific command-line options are marked with `[PLY only]` in `--help`.
-
-#### Phobos MeshLab render example
-
-The image below shows a 30-degree fitted PLY tube graticule rendered in MeshLab on top of `phobos_g_296m_spc_obj_0000n00000_v004.obj`.
-
-```sh
-python standalone/mkgraticule_planet.py \
-  --mesh phobos_g_296m_spc_obj_0000n00000_v004.obj \
-  -g 30 30 \
-  --offset-distance 0.005 \
-  --tube-radius 0.02 \
-  --tube-segments 8 \
-  --color 40,40,40 \
-  phobos_latlon_30deg_tube_r002_o005.ply
-```
-
-![Phobos fitted 3D PLY graticule rendered in MeshLab](docs/phobos_ply_example.png)
-
 ### Major/minor graticules
 #### Python / GDAL (conda)
 ```sh
@@ -500,6 +450,59 @@ mkgraticule -srs ESRI:54009 \
 | lon_360e   | longitude label (0° … 360°E) |
 | lon_360w   | longitude label (0° … 360°W) |
 | point_role | point role: `collapsed` or `center` |
+
+## 3D PLY fitted to an OBJ shape model (Python only)
+
+PLY output ray-casts latitude/longitude samples onto the input mesh. It assumes the mesh is centered on `--origin` and uses `+X = lon 0`, `+Y = lon 90E`, and `+Z = north`.
+
+The existing grid options are reused:
+
+- `-g xstep ystep`: meridian and parallel spacing in degrees
+- `-r xres yres`: longitude sampling for parallels and latitude sampling for meridians
+- `-e xmin ymax xmax ymin`: longitude/latitude range to fit
+
+Install an Embree binding such as `embreex` or `pyembree` for the fast ray path. Without Embree, the Python CLI uses the default `trimesh`/`rtree` ray intersector only for small jobs; larger jobs fail fast before ray casting because the fallback can allocate very large candidate arrays on irregular shape models. Pass `--allow-slow-raycast` only if you intentionally want to force that fallback.
+
+### Python / GDAL (conda)
+```sh
+mkgraticule -f ply \
+            --input-mesh phobos_shape.obj \
+            -g 10 10 \
+            -r 1 1 \
+            -e 0 90 360 -90 \
+            --offset-fraction 0.0005 \
+            phobos_graticule_3d.ply
+```
+
+### Python / GDAL (standalone)
+```sh
+python mkgraticule_planet.py -f ply \
+                             --input-mesh phobos_shape.obj \
+                             -g 10 10 \
+                             -r 1 1 \
+                             -e 0 90 360 -90 \
+                             --tube-radius 0.001 \
+                             phobos_graticule_3d.ply
+```
+
+`--tube-radius` writes a colored tube mesh instead of PLY edge primitives. PLY-specific command-line options are marked with `[PLY only]` in `--help`.
+
+### Phobos MeshLab render example
+
+The image below shows a 30-degree fitted PLY tube graticule rendered in MeshLab on top of `phobos_g_296m_spc_obj_0000n00000_v004.obj`.
+
+```sh
+python standalone/mkgraticule_planet.py \
+  --mesh phobos_g_296m_spc_obj_0000n00000_v004.obj \
+  -g 30 30 \
+  --offset-distance 0.005 \
+  --tube-radius 0.02 \
+  --tube-segments 8 \
+  --color 40,40,40 \
+  phobos_latlon_30deg_tube_r002_o005.ply
+```
+
+![Phobos fitted 3D PLY graticule rendered in MeshLab](docs/phobos_ply_example.png)
 
 ## Acknowledgement
 
