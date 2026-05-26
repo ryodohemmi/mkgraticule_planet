@@ -93,6 +93,8 @@ conda activate myenv
 > **Note:** GDAL does not provide pre-built wheels on PyPI, so `pip install` cannot
 > resolve the GDAL dependency reliably. Installing via conda is recommended.
 
+For Python PLY output, `pip install embreex` in the same conda environment is recommended; the conda package includes the `trimesh`/`rtree` fallback but not Embree acceleration.
+
 #### Option 2: Use standalone scripts directly
 
 The [`standalone/`](/standalone/) directory contains self-contained single-file scripts for both Python and R. No package installation is required beyond the runtime libraries -- just download or clone and run.
