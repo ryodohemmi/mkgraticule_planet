@@ -36,12 +36,13 @@ The fitted 3D PLY output for OBJ/mesh shape models is available in the Python im
 ## Features
 
 * Supports **IAU 2015 planetary coordinate systems**
+  * QGIS-friendly output suitable for map production: label fields allow immediate graticule labeling, and CRS metadata ([`definition_12_063`](https://www.geopackage.org/spec/#gpkg_spatial_ref_sys_cols_crs_wkt)) ensures that IAU coordinate systems are correctly recognized when the GeoPackage is loaded in QGIS (GeoPackage only).
+* Generates degree-based latitude/longitude graticules even when the output CRS is a metre-based projected CRS
 * GeoPackage and SpatiaLite output
 * Python-only fitted 3D PLY output for OBJ/mesh shape models
 * Compatible with **GDAL 3.x**
 * Available as both **GDAL Python** and **R sf** implementations for 2D GIS output
 * Multiple graticule label styles
-* QGIS-friendly output suitable for map production: label fields allow immediate graticule labeling, and CRS metadata ([`definition_12_063`](https://www.geopackage.org/spec/#gpkg_spatial_ref_sys_cols_crs_wkt)) ensures that IAU coordinate systems are correctly recognized when the GeoPackage is loaded in QGIS (GeoPackage only).
 * Optional major/minor classification via `-m/--major` (`grid_type = major|minor`, otherwise NULL)
 * Safer handling for projected CRS with limited domains:
   * abort on projected + near-global extent unless `-s/--skipfailures` is used
@@ -168,6 +169,8 @@ pip install -e .
 For a compact summary of conda download size and post-install environment size for both implementations, see [docs/setup/conda-env-size-summary-2026-03-17.md](docs/setup/conda-env-size-summary-2026-03-17.md).
 
 ## Design notes
+
+Unlike QGIS's built-in [**Vector creation - Create grid (Vector > Research Tools > Create Grid)**](https://docs.qgis.org/latest/en/docs/user_manual/processing_algs/qgis/vectorcreation.html#create-grid), which defines grid spacing in the map units of the output CRS, `mkgraticule_planet` defines meridians and parallels in degrees in geographic coordinates and then reprojects them. It can therefore create a true degree-based latitude/longitude graticule directly in a metre-based projected CRS, in addition to supporting IAU 2015 planetary coordinate systems.
 
 For the rationale behind the graticule-generation workflow and a comparison with QGIS-native projected-grid tools and `sf::st_graticule()`, see [docs/design/comparison-with-qgis-and-sf.md](docs/design/comparison-with-qgis-and-sf.md).
 
