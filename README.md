@@ -499,7 +499,7 @@ python mkgraticule_planet.py -f ply \
 
 ### Phobos MeshLab render example
 
-The image below shows a 30-degree fitted PLY tube graticule rendered in MeshLab on top of `phobos_g_296m_spc_obj_0000n00000_v004.obj`.
+The image below shows a 30-degree fitted PLY tube graticule rendered in MeshLab on top of [`phobos_g_296m_spc_obj_0000n00000_v004.obj`](https://sbmt.jhuapl.edu/shared-files/files/).
 
 ```sh
 python standalone/mkgraticule_planet.py \
