@@ -176,6 +176,10 @@ This distinction matters because QGIS's on-the-fly reprojection affects how laye
 
 For the rationale behind the graticule-generation workflow and a comparison with QGIS-native projected-grid tools and `sf::st_graticule()`, see [docs/design/comparison-with-qgis-and-sf.md](docs/design/comparison-with-qgis-and-sf.md).
 
+**QGIS 4.x compatibility note.** GeoPackage output from `mkgraticule_planet` has been tested for normal operation through QGIS 3.44. The files are expected to remain readable in [QGIS 4.0](https://changelog.qgis.org/en/version/4.0/) and later, but they have not yet been fully validated with these releases. QGIS 4.0 was released on 6 March 2026.
+
+Planetary users should take particular care with CRS transformations and distance-related workflows in QGIS 4.x. The public QGIS issue tracker documents [clipping and graticule/grid failures during reprojection between lunar IAU CRSs](https://github.com/qgis/QGIS/issues/63048). Recent merged QGIS changes also explicitly address [hard-coded WGS 84 assumptions in non-Earth projects](https://github.com/qgis/QGIS/pull/65000), [invalid distance and area results for spherical planetary bodies](https://github.com/qgis/QGIS/pull/66467), and [spurious attempts to transform non-Earth CRSs to EPSG:4326](https://github.com/qgis/QGIS/pull/66468). Accordingly, use a metre-based projected map CRS whenever possible and verify reprojection results. The QGIS documentation distinguishes [ellipsoidal measurements from Cartesian (planimetric) measurements](https://docs.qgis.org/latest/en/docs/user_manual/map_views/map_view.html#measuring) and notes that some measurement workflows do not transform data to the project CRS before measuring. When the map view uses a geographic CRS in degrees, prefer ellipsoidal measurements and keep **Planimetric measurements** disabled; use Cartesian measurements only with a suitable projected CRS.
+
 ## Why Shapefile and GeoJSON export are not supported
 
 `mkgraticule_planet` does not support direct Shapefile or GeoJSON export by design.
