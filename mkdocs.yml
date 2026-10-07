@@ -1,0 +1,57 @@
+site_name: mkgraticule_planet
+site_description: Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS, exported as GeoPackage, SpatiaLite, or fitted 3D PLY.
+site_url: https://mkgraticule-planet.readthedocs.io/
+repo_url: https://github.com/ryodohemmi/mkgraticule_planet
+repo_name: ryodohemmi/mkgraticule_planet
+edit_uri: edit/main/docs/
+copyright: Apache-2.0 License
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: installation.md
+      - Usage: usage.md
+  - Guides:
+      - Metre-based grids (-u meters): metre-grids.md
+      - Quick View (-q): quick-view.md
+      - Projected CRS and planetary CRS: projected-crs.md
+      - 3D PLY (Python only): ply.md
+  - Reference:
+      - CLI reference: cli-reference.md
+      - Output fields: output-fields.md
+      - QGIS examples: qgis-examples.md
+  - Design notes:
+      - Overview: design/notes.md
+      - Comparison with QGIS and sf: design/comparison-with-qgis-and-sf.md
+      - Why no Shapefile or GeoJSON export: design/shapefile-geojson.md
+      - Conda environment size: setup/conda-env-size-summary-2026-03-17.md
+  - Changelog: https://github.com/ryodohemmi/mkgraticule_planet/blob/main/CHANGELOG.md
