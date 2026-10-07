@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "1.1.1"
+VERSION <- "1.2.0"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
@@ -46,20 +46,30 @@ usage <- function(status = 0) {
     "      Maps to: lon-min lat-max lon-max lat-min\n",
     "      Requires ulx < lrx and uly > lry.\n",
     "      Default: -180 90 180 -90 (global)\n",
+    "      With -u meters, the extent is given in projected CRS meters and is required.\n",
     "      Legacy aliases: --lon-min --lat-max --lon-max --lat-min\n",
     "  -g, --grid xstep ystep\n",
-    "      Set grid size [xstep ystep] in degrees\n",
+    "      Set grid size [xstep ystep] in degrees (in meters with -u meters)\n",
     "      xstep = meridian interval, ystep = parallel interval\n",
     "      Legacy aliases: --meridian-step --parallel-step\n",
     "  -r, --res xres yres\n",
     "      Set resolution to polygonize grids [xres yres] in degrees\n",
     "      xres = longitude sampling for parallels\n",
     "      yres = latitude sampling for meridians\n",
+    "      With -u meters, the value is in meters; if omitted, lines are written as\n",
+    "      straight segments between the extent edges (no intermediate vertices).\n",
     "      Legacy aliases: --vertex-step-lon --vertex-step-lat\n",
     "  -m, --major xmajor ymajor\n",
-    "      Major graticule interval [xmajor ymajor] in degrees.\n",
+    "      Major graticule interval [xmajor ymajor] in degrees (in meters with -u meters).\n",
     "      If set, grid_type will be 'major' or 'minor'.\n",
     "      If omitted, grid_type is NULL.\n",
+    "  -u, --units UNITS\n",
+    "      Unit of -g/-r/-m/-e: 'degrees' (default) or 'meters'.\n",
+    "      'meters' generates an easting/northing grid directly in the projected CRS\n",
+    "      (no reprojection) and requires a projected CRS in meters and -e.\n",
+    "  -q, --qview\n",
+    "      Quick View: after writing the output, open a window showing the whole grid\n",
+    "      (close the window to finish).\n",
     "  -nde, --no-duplicate-endpoint\n",
     "      Drop the duplicate endpoint meridian when the longitude span is ~360 degrees\n",
     "      (e.g., keep -180 and drop 180, or keep 0 and drop 360).\n",
@@ -155,6 +165,23 @@ parse_args <- function(args) {
 
     if (key %in% c("-nde", "--no-duplicate-endpoint")) {
       res[["no-duplicate-endpoint"]] <- TRUE
+      i <- i + 1
+      next
+    }
+
+    if (key %in% c("-u", "--units")) {
+      vals <- expect_n_values(args, i, 1, key)
+      units <- tolower(vals[1])
+      if (!units %in% c("degrees", "meters")) {
+        stop(sprintf("--units must be 'degrees' or 'meters', got '%s'", vals[1]))
+      }
+      res[["units"]] <- units
+      i <- i + 2
+      next
+    }
+
+    if (key %in% c("-q", "--qview")) {
+      res[["qview"]] <- TRUE
       i <- i + 1
       next
     }
@@ -969,6 +996,77 @@ override_projection_latitude_parameters <- function(crs_obj, lat_orig = NULL, la
   list(crs = st_crs(out_wkt), applied = applied)
 }
 
+check_meters_units <- function(crs_obj, projected) {
+  if (!projected) {
+    stop(paste0(
+      "-u meters requires a projected target CRS, but the given CRS is not projected.\n",
+      "Use a projected CRS (e.g. polar stereographic) or omit -u to use degrees."
+    ))
+  }
+  unit <- st_crs(crs_obj)$units_gdal
+  if (is.null(unit) || is.na(unit) || !tolower(unit) %in% c("metre", "meter")) {
+    stop(sprintf(
+      "-u meters requires a projected CRS whose linear unit is the metre (got '%s').",
+      if (is.null(unit) || is.na(unit)) "unknown" else unit
+    ))
+  }
+  invisible(NULL)
+}
+
+# Integer multiples of step inside [vmin, vmax] (grid anchored at 0).
+meter_ticks <- function(vmin, vmax, step, eps = 1e-9) {
+  k0 <- ceiling(vmin / step - eps)
+  k1 <- floor(vmax / step + eps)
+  if (k1 < k0) return(numeric(0))
+  (k0:k1) * step
+}
+
+# Sample positions from vmin to vmax (both included) spaced by res.
+meter_samples <- function(vmin, vmax, res) {
+  s <- seq(vmin, vmax, by = res)
+  if (length(s) > 0L && vmax - s[length(s)] < 1e-9 * max(1, abs(vmax))) {
+    s <- s[-length(s)]
+  }
+  c(s, vmax)
+}
+
+open_quick_view_window <- function() {
+  sysname <- Sys.info()[["sysname"]]
+  if (identical(sysname, "Windows")) {
+    grDevices::windows(width = 9, height = 7)
+  } else if (identical(sysname, "Darwin")) {
+    grDevices::quartz(width = 9, height = 7)
+  } else {
+    grDevices::x11(width = 9, height = 7)
+  }
+}
+
+# Quick View (-q/--qview): the output file is already written when this runs,
+# so any problem is reported as a warning and does not change the exit status.
+quick_view <- function(path, line_layer, point_layer = NULL) {
+  tryCatch({
+    lines <- st_read(path, layer = line_layer, quiet = TRUE)
+    if (nrow(lines) == 0L) {
+      message("WARNING: nothing to show in Quick View (no features written).")
+      return(invisible(NULL))
+    }
+    open_quick_view_window()
+    gt <- if ("grid_type" %in% names(lines)) lines$grid_type else rep(NA_character_, nrow(lines))
+    col <- ifelse(gt %in% "major", "black", ifelse(gt %in% "minor", "grey60", "grey30"))
+    lwd <- ifelse(gt %in% "major", 2, 1)
+    plot(st_geometry(lines), col = col, lwd = lwd, axes = TRUE, main = basename(path), reset = FALSE)
+    if (!is.null(point_layer)) {
+      pts <- st_read(path, layer = point_layer, quiet = TRUE)
+      if (nrow(pts) > 0L) plot(st_geometry(pts), add = TRUE, pch = 16, col = "red")
+    }
+    cat("Quick View window opened (close the window to finish).\n")
+    while (grDevices::dev.cur() > 1L) Sys.sleep(0.2)
+  }, error = function(e) {
+    message(sprintf("WARNING: Quick View failed: %s", conditionMessage(e)))
+  })
+  invisible(NULL)
+}
+
 opts <- parse_args(args)
 
 proj_crs  <- get_optional(opts, "proj-crs", "IAU_2015:30100")
@@ -1040,6 +1138,17 @@ if (projected && (!is.null(lat_orig) || !is.null(lat_sp) || !is.null(lat_sp2))) 
   crs_proj <- ov$crs
   applied_overrides <- ov$applied
 }
+units <- get_optional(opts, "units", "degrees")
+qview <- isTRUE(get_optional(opts, "qview", FALSE))
+if (identical(units, "meters")) {
+  check_meters_units(crs_proj, projected)
+  extent_keys <- c("lon-min", "lat-max", "lon-max", "lat-min")
+  if (any(vapply(extent_keys, function(k) is.null(opts[[k]]), logical(1)))) {
+    stop("-u meters requires -e/--extent in projected CRS meters (ulx uly lrx lry).")
+  }
+  if (lon_min >= lon_max) stop(sprintf("extent requires ulx < lrx (got ulx=%s, lrx=%s).", lon_min, lon_max))
+  if (lat_max <= lat_min) stop(sprintf("extent requires uly > lry (got uly=%s, lry=%s).", lat_max, lat_min))
+}
 term_width <- terminal_width()
 center <- if (projected) get_projection_center_lat_lon(crs_proj) else list(lat = NULL, lon = NULL)
 if (projected && is.null(center$lon)) center$lon <- 0
@@ -1053,6 +1162,96 @@ if (file.exists(output)) {
   if (file.exists(output)) {
     stop(sprintf("Cannot overwrite '%s'. It may be open in QGIS.", output))
   }
+}
+
+if (identical(units, "meters")) {
+  if (isTRUE(get_optional(opts, "no-duplicate-endpoint", FALSE))) {
+    message("NOTE: -nde ignored with -u meters (no reprojection is performed).")
+  }
+
+  xs <- meter_ticks(lon_min, lon_max, mer_step)
+  ys <- meter_ticks(lat_min, lat_max, par_step)
+  if (length(xs) == 0L && length(ys) == 0L) {
+    stop(sprintf(
+      "No grid line falls inside the extent (x: %s..%s, y: %s..%s) for the grid size (%s, %s) m.",
+      lon_min, lon_max, lat_min, lat_max, mer_step, par_step
+    ))
+  }
+
+  # Lines are straight in the projected CRS, so without an explicit -r only the end points are written.
+  x_samples <- if (!is.null(opts[["vertex-step-lon"]])) meter_samples(lon_min, lon_max, vstep_lon) else c(lon_min, lon_max)
+  y_samples <- if (!is.null(opts[["vertex-step-lat"]])) meter_samples(lat_min, lat_max, vstep_lat) else c(lat_min, lat_max)
+
+  print_separator(term_width)
+  show_wkt(crs_proj)
+  print_separator(term_width)
+
+  line_rows <- vector("list", length(ys) + length(xs))
+  line_geoms <- vector("list", length(ys) + length(xs))
+  row <- 1L
+
+  for (i in seq_along(ys)) {
+    progress_bar(i, length(ys), "Processing Northings: ")
+    y <- ys[i]
+    line_rows[[row]] <- data.frame(
+      row_no = row,
+      x = NA_real_,
+      y = y,
+      grid_type = if (is.null(major_par_step)) NA_character_ else if (is_multiple(y, major_par_step)) "major" else "minor",
+      stringsAsFactors = FALSE
+    )
+    line_geoms[[row]] <- st_linestring(cbind(x_samples, rep(y, length(x_samples))))
+    row <- row + 1L
+  }
+  cat("\n")
+
+  for (i in seq_along(xs)) {
+    progress_bar(i, length(xs), "Processing Eastings: ")
+    x <- xs[i]
+    line_rows[[row]] <- data.frame(
+      row_no = row,
+      x = x,
+      y = NA_real_,
+      grid_type = if (is.null(major_mer_step)) NA_character_ else if (is_multiple(x, major_mer_step)) "major" else "minor",
+      stringsAsFactors = FALSE
+    )
+    line_geoms[[row]] <- st_linestring(cbind(rep(x, length(y_samples)), y_samples))
+    row <- row + 1L
+  }
+  cat("\n")
+
+  grid_m <- st_sf(
+    do.call(rbind, line_rows),
+    geometry = st_sfc(line_geoms, crs = crs_proj)
+  )
+
+  print_separator(term_width)
+  cat(sprintf("Meter grid (no reprojection): %s\n\n", authority_label(proj_crs)))
+
+  if (is_gpkg) {
+    suppressWarnings(st_write(grid_m, output, layer = layer, delete_layer = TRUE, quiet = TRUE))
+  } else {
+    suppressWarnings(st_write(grid_m, output, layer = layer,
+                              driver = "SQLite", dataset_options = "SPATIALITE=YES",
+                              layer_options = "SPATIAL_INDEX=YES",
+                              delete_layer = TRUE, quiet = TRUE))
+  }
+
+  if (is_gpkg) {
+    if (length(applied_overrides) > 0L) {
+      cat("WARN: CRS parameter overrides were applied; skip gpkg_spatial_ref_sys.definition_12_063 update.\n")
+    } else {
+      fix_gpkg_crs_wkt(output, proj_crs)
+    }
+  }
+
+  print_separator(term_width)
+  cat(sprintf("Output: %s\n", output))
+  cat(sprintf("Northing (y) lines: %d\n", length(ys)))
+  cat(sprintf("Easting (x) lines: %d\n", length(xs)))
+
+  if (qview) quick_view(output, layer)
+  quit(status = 0)
 }
 
 meridians <- seq_inclusive(lon_min, lon_max, mer_step)
@@ -1249,3 +1448,5 @@ cat(sprintf("Output: %s\n", output))
 cat(sprintf("Lat grids: %d\n", length(parallels)))
 cat(sprintf("Lon grids: %2d\n", length(meridians)))
 cat(sprintf("Points: %d\n", point_count))
+
+if (qview) quick_view(output, layer, if (point_count > 0L) point_layer else NULL)
