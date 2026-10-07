@@ -6,7 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Added `-q/--qview` (Quick View): opens a window showing the whole grid right after the output file is written. The Python implementation uses matplotlib, which is an optional dependency (`pip install mkgraticule_planet[quickview]` or `conda install matplotlib`); the R script uses base graphics.
-- Added `-u/--units {degrees,meters}` (default `degrees`). With `-u meters`, `-g/-r/-m/-e` are interpreted as projected metres and an easting/northing grid is written directly in the output CRS without reprojection. It requires a projected CRS whose linear unit is the metre and an explicit `-e`. Output fields are `x`, `y` and `grid_type`.
+- Added `-u/--units {degrees,meters}` (default `degrees`). With `-u meters`, `-g/-r/-m/-e` are interpreted as projected metres and an easting/northing grid is written directly in the output CRS without reprojection. It requires a projected CRS whose linear unit is the metre and an explicit `-e`. The defaults become `-g 5000 5000` and `-r 100 100`. Output fields are `x`, `y` and `grid_type`.
+- Added an output-size check for `-r`: the recommended range is `0.1 <= res <= step/2` degrees (`10 <= res <= step/2` metres with `-u meters`). Below the lower bound, or when the estimated output exceeds 100 MB, a warning with the estimated size is printed and `Continue? [y/N]` is asked; only `y`/`yes` continues and otherwise nothing is written (exit status 1). Values above `step/2` only print a note. When stdin is not a terminal the command stops, and the new `-y/--yes` option continues without asking. PLY output is not checked.
 - Added a readthedocs documentation site (MkDocs) built from `docs/`.
 
 ### Changed

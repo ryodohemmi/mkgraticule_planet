@@ -10,7 +10,7 @@ By default, `-g`, `-r`, `-m` and `-e` are in degrees. With `-u meters` (default:
 - Requires a projected `-srs` whose linear unit is the metre; otherwise the command stops with an error before touching any existing output file.
 - `-e` is required and is given in projected metres (`xmin ymax xmax ymin`).
 - Grid lines are placed at integer multiples of the step (anchored at 0) and span the extent. For example, with `-g 250000 250000` and an extent of ±600 000 m, lines are drawn at −500 000, −250 000, 0, 250 000 and 500 000 m in each direction.
-- Without `-r`, each line is written as a straight segment between the extent edges. With `-r`, vertices are added at that spacing (in metres). Lines are straight in the projected CRS, so `-r` is only needed if you want vertices for later processing.
+- Defaults are `-g 5000 5000` and `-r 100 100` (metres). Lines are sampled at the `-r` spacing. Keep `10 <= res <= step/2`; smaller values, or an estimated output above 100 MB, trigger the [output size check](cli-reference.md#output-size-check).
 - `-m` works as in degree mode: lines at multiples of the major interval get `grid_type = major`, the others `minor`. The major interval must be a natural-number multiple of the grid step.
 - Output fields are `x`, `y` and `grid_type` (see [Output fields](output-fields.md)); the latitude/longitude label fields are not written, and no companion point layer is created.
 - Not available for PLY output. `-nde` (and, in Python, `-s` and `-p`) have no effect because nothing is reprojected.

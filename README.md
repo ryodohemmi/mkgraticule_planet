@@ -346,7 +346,7 @@ By default, `-g`, `-r`, `-m` and `-e` are in degrees. With `-u meters` (default:
 - Requires a projected `-srs` whose linear unit is the metre; otherwise the command stops with an error.
 - `-e` is required and is given in projected metres (`xmin ymax xmax ymin`).
 - Grid lines are placed at integer multiples of the step (anchored at 0) and span the extent.
-- Without `-r`, each line is written as a straight segment between the extent edges. With `-r`, vertices are added at that spacing (in metres).
+- Defaults are `-g 5000 5000` and `-r 100 100` (metres). Lines are sampled at the `-r` spacing; see [Output size check](#output-size-check) for the recommended range.
 - Output fields are `x`, `y` and `grid_type` (see [Output fields](#output-fields)); no companion point layer is written.
 - Not available for PLY output. `-nde` (and, in Python, `-s` and `-p`) have no effect.
 
@@ -376,6 +376,22 @@ Rscript mkgraticule_planet.R -u meters \
                              -m 500000 500000 \
                              -e -500000 500000 500000 -500000 \
                              moon_south_pole_grid_100km.gpkg
+```
+
+### Output size check
+
+Keep `-r` within `0.1 <= res <= step/2` degrees (`10 <= res <= step/2` metres with `-u meters`) for each axis. If `-r` is below the lower bound, or the estimated output exceeds 100 MB, the command prints a warning with the estimated output size and asks `Continue? [y/N]`. Only `y`/`yes` continues; `n`/`no` stops without writing anything (exit status 1) and leaves an existing output file untouched. If `-r` is above `step/2`, only a note is printed.
+
+- The defaults are `-g 5 5` / `-r 0.1 0.1` in degrees (R: `-r 0.5 0.1`, `-g` required) and `-g 5000 5000` / `-r 100 100` with `-u meters`.
+- When standard input is not a terminal (scripts, CI), the command stops instead of asking. Pass `-y/--yes` to continue without asking.
+- The estimate is approximate and counts geometry only (about 16 bytes per vertex).
+- PLY output is not checked.
+
+```sh
+mkgraticule -g 10 10 -r 0.05 0.05 -srs IAU_2015:30100 moon_fine.gpkg
+# WARNING: xres=0.05 is below the recommended lower bound 0.1 degrees; ...
+#   Estimated output: ~4.3 MB (270,056 vertices in 56 lines; approximate, geometry only).
+# Continue? [y/N]:
 ```
 
 ### Quick View (`-q`)

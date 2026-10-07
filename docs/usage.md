@@ -136,9 +136,10 @@ All options are listed in the [CLI reference](cli-reference.md).
 If `-m/--major` is set: `grid_type` will be `"major"` or `"minor"`.
 If omitted: `grid_type` is NULL.
 
-## Metre-based grids and Quick View
+## Metre-based grids, Quick View and the output size check
 
-Two optional modes are described on their own pages:
+Optional modes and safeguards are described on their own pages:
 
 - [Metre-based grids (`-u meters`)](metre-grids.md): a planar easting/northing grid written directly in a metre-based projected CRS.
 - [Quick View (`-q`)](quick-view.md): a window showing the whole grid right after the file is written.
+- [Output size check](cli-reference.md#output-size-check): a yes/no confirmation, with an estimated file size, when `-r` is below its recommended lower bound or the output would exceed 100 MB (`-y/--yes` skips it).

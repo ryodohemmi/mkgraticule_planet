@@ -22,8 +22,8 @@ mkgraticule [options] outfile
 | ------ | ------- | - | ----------- |
 | `-srs`, `--srs` | `IAU_2015:30100` | ✓ | Target spatial reference (IAU code, other GDAL/PROJ code, or `*.prj` file). |
 | `-e`, `--extent ulx uly lrx lry` | `-180 90 180 -90` | ✓ | Extent in degrees (`xmin ymax xmax ymin`). With `-u meters`: projected metres, required. |
-| `-g`, `--grid xstep ystep` | `5 5` | ✓ (required, no default) | Grid size in degrees (metres with `-u meters`). |
-| `-r`, `--res xres yres` | `0.1 0.1` | ✓ (`0.5 0.1`) | Sampling spacing used to polygonize lines, in degrees (metres with `-u meters`). With `-u meters`, if omitted, lines are straight two-vertex segments. |
+| `-g`, `--grid xstep ystep` | `5 5` (`-u meters`: `5000 5000`) | ✓ (degrees: required, no default) | Grid size in degrees (metres with `-u meters`). |
+| `-r`, `--res xres yres` | `0.1 0.1` (`-u meters`: `100 100`) | ✓ (degrees: `0.5 0.1`) | Sampling spacing used to polygonize lines, in degrees (metres with `-u meters`). Recommended range: see [Output size check](#output-size-check). |
 | `-m`, `--major xmajor ymajor` | none | ✓ | Major interval; must be a natural-number multiple of the grid step. Sets `grid_type` to `major`/`minor`. |
 | `-u`, `--units` | `degrees` | ✓ | `degrees` or `meters`. See [Metre-based grids](metre-grids.md). |
 | `-nde`, `--no-duplicate-endpoint` | off | ✓ | Drop the duplicate endpoint meridian for ~360° longitude spans. |
@@ -37,6 +37,23 @@ mkgraticule [options] outfile
 | `-ls2`, `--lat-sp2` | none | ✓ | Override the 2nd standard parallel (degrees). |
 | `-s`, `--skipfailures` | off | — | Skip features that fail reprojection. |
 | `-p`, `--partial-reprojection` | off | — | Allow partial reprojection near projection-domain limits. |
+
+## Output size check
+
+| Option | Default | R | Description |
+| ------ | ------- | - | ----------- |
+| `-y`, `--yes` | off | ✓ | Answer yes to the confirmation below. Required when stdin is not a terminal. |
+
+For each axis, `-r` should satisfy `floor <= res <= step/2`, where the floor is 0.1 degrees, or 10 m with `-u meters`. If `step/2` is smaller than the floor, the floor is relaxed to `step/2`.
+
+| Situation | Behaviour |
+| --------- | --------- |
+| `res` below the floor, or estimated output above 100 MB | Warning with the estimated size, then `Continue? [y/N]`. Only `y`/`yes` (any case) continues; `n`/`no`, end of input, or any other final answer stops with exit status 1 and writes nothing. Invalid answers are asked again. An existing output file is left untouched. |
+| Same, but stdin is not a terminal | Stops with exit status 1 unless `-y/--yes` is given. |
+| `res` above `step/2` | A note is printed and the command continues. |
+| PLY output | Not checked. |
+
+The estimate is `vertices × 16 bytes` (2D coordinates in WKB). It is approximate: it counts geometry only and ignores the spatial index, so the real file is usually somewhat larger, and it is an upper bound on the vertex count because lines that collapse to a point are still counted.
 
 ## Quick View
 
@@ -71,4 +88,5 @@ The previous long option names (`--mesh`, `--origin`, `--far-scale`, `--batch-si
 | `-u meters` without `-e` | Error |
 | `-u meters` with PLY output | Error |
 | `-q` with PLY output | Warning, `-q` ignored |
+| `-r` below the floor / output above 100 MB | Confirmation (see [Output size check](#output-size-check)) |
 | `-nde`, `-s`, `-p` with `-u meters` | Ignored (notice printed) |
