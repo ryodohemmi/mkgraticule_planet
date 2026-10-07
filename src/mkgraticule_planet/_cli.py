@@ -21,6 +21,8 @@ python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 
 python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -e -180 90 180 -90 out.sqlite
 python mkgraticule_planet.py -g 10 10 -r 0.2 0.2 -srs IAU_2015:30100 -f spatialite out.db
 python mkgraticule_planet.py -f ply -mesh shape.obj -g 10 10 -r 1 1 out.ply
+python mkgraticule_planet.py -q -g 10 10 -srs IAU_2015:30100 out.gpkg
+python mkgraticule_planet.py -u meters -g 100000 100000 -e -500000 500000 500000 -500000 -srs <projected CRS in m> out.gpkg
 """
 
 # SPDX-License-Identifier: Apache-2.0
@@ -28,7 +30,7 @@ python mkgraticule_planet.py -f ply -mesh shape.obj -g 10 10 -r 1 1 out.ply
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -113,6 +115,14 @@ def _reject_unknown_option_tokens(parser, argv):
         if suggestion:
             message += f" (did you mean {suggestion[0]}?)"
         parser.error(message)
+
+class _StoreGiven(argparse.Action):
+    """Store the value and set ``<dest>_given`` so an explicit option can be told from its default."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        setattr(namespace, f"{self.dest}_given", True)
+
 
 def get_args():
     parser = argparse.ArgumentParser(
@@ -292,7 +302,7 @@ def get_args():
         nargs=2,
         metavar=("xstep", "ystep"),
         default=[5, 5],
-        help="Set grid size [xstep ystep] in degrees",
+        help="Set grid size [xstep ystep] in degrees (in meters with -u meters)",
     )
     parser.add_argument(
         "-r",
@@ -301,7 +311,10 @@ def get_args():
         nargs=2,
         metavar=("xres", "yres"),
         default=[0.1, 0.1],
-        help="Set resolution to polygonize grids [xres yres] in degrees",
+        action=_StoreGiven,
+        help="Set resolution to polygonize grids [xres yres] in degrees.\
+            \nWith -u meters, the value is in meters; if omitted, lines are written as straight\
+            \nsegments between the extent edges (no intermediate vertices).",
     )
     parser.add_argument(
         "-m",
@@ -310,7 +323,7 @@ def get_args():
         nargs=2,
         metavar=("xmajor", "ymajor"),
         default=None,
-        help="Major graticule interval [xmajor ymajor] in degrees.\
+        help="Major graticule interval [xmajor ymajor] in degrees (in meters with -u meters).\
             \nIf set, grid_type will be 'major' or 'minor'.\
             \nIf omitted, grid_type is NULL.",
     )
@@ -329,7 +342,25 @@ def get_args():
         nargs=4,
         metavar=("ulx", "uly", "lrx", "lry"),
         default=[-180, 90, 180, -90],
-        help="Set a spatial extent of the output file",
+        action=_StoreGiven,
+        help="Set a spatial extent of the output file in degrees.\
+            \nWith -u meters, the extent is given in projected CRS meters and is required.",
+    )
+    parser.add_argument(
+        "-u",
+        "--units",
+        type=str,
+        choices=["degrees", "meters"],
+        default="degrees",
+        help="Unit of -g/-r/-m/-e. 'meters' generates an easting/northing grid directly in the\
+            \nprojected CRS (no reprojection) and requires a projected CRS in meters and -e.",
+    )
+    parser.add_argument(
+        "-q",
+        "--qview",
+        action="store_true",
+        help="Quick View: after writing the output, open a window showing the whole grid\
+            \n(requires matplotlib; close the window to finish).",
     )
     parser.add_argument(
         "-s",
@@ -385,7 +416,7 @@ def get_args():
         help="Overwrite the 2nd standard parallel in the target projected CRS (degrees).",
     )
 
-    parser.set_defaults(offset_distance=0.0, offset_fraction=0.0)
+    parser.set_defaults(offset_distance=0.0, offset_fraction=0.0, extent_given=False, res_given=False)
 
     _reject_unknown_option_tokens(parser, sys.argv[1:])
     args = parser.parse_args()
@@ -396,10 +427,13 @@ def get_args():
         if value <= 0:
             parser.error(f"{name} must be > 0 (got {value}).")
 
-    if xstep > 360:
-        parser.error(f"xstep must be <= 360 (got {xstep}).")
-    if ystep > 180:
-        parser.error(f"ystep must be <= 180 (got {ystep}).")
+    if args.units == "degrees":
+        if xstep > 360:
+            parser.error(f"xstep must be <= 360 (got {xstep}).")
+        if ystep > 180:
+            parser.error(f"ystep must be <= 180 (got {ystep}).")
+    elif not args.extent_given:
+        parser.error("-u meters requires -e/--extent in projected CRS meters (ulx uly lrx lry).")
     if args.far_scale <= 0:
         parser.error(f"ray-scale must be > 0 (got {args.far_scale}).")
     if args.batch_size <= 0:
@@ -1503,6 +1537,272 @@ def _add_projection_center_point(
     point_layer.CreateFeature(feat)
     feat = None
 
+def _check_meters_units(args):
+    """Validate -u meters: the target CRS must be projected with the metre as linear unit."""
+    srs = osr.SpatialReference()
+    srs.SetFromUserInput(args.srs)
+    if srs.IsProjected() != 1:
+        raise RuntimeError(
+            "-u meters requires a projected target CRS, but the given CRS is not projected.\n"
+            "Use a projected CRS (e.g. polar stereographic) or omit -u to use degrees."
+        )
+    factor = srs.GetLinearUnits()
+    if abs(factor - 1.0) > 1e-9:
+        raise RuntimeError(
+            f"-u meters requires a projected CRS whose linear unit is the metre "
+            f"(got '{srs.GetLinearUnitsName()}', {factor} m per unit)."
+        )
+
+
+def _meter_ticks(vmin, vmax, step, eps=1e-9):
+    """Integer multiples of step inside [vmin, vmax] (grid anchored at 0)."""
+    k0 = int(np.ceil(vmin / step - eps))
+    k1 = int(np.floor(vmax / step + eps))
+    return np.arange(k0, k1 + 1, dtype=float) * step
+
+
+def _meter_samples(vmin, vmax, res):
+    """Sample positions from vmin to vmax (both included) spaced by res."""
+    samples = np.arange(vmin, vmax, res, dtype=float)
+    if samples.size and vmax - samples[-1] < 1e-9 * max(1.0, abs(vmax)):
+        samples = samples[:-1]
+    return np.append(samples, vmax)
+
+
+def _write_meters_grid(args, outfile, ogr_driver_name, ds_create_opts, is_gpkg,
+                       t_srs_i, applied_overrides, terminal_width):
+    """Write an easting/northing grid (-u meters) directly in the projected CRS."""
+    xstep, ystep = args.grid
+    xres, yres = args.res
+    ulx, uly, lrx, lry = args.extent
+    xmin, xmax = min(ulx, lrx), max(ulx, lrx)
+    ymin, ymax = min(lry, uly), max(lry, uly)
+    xmajor, ymajor = args.major if args.major is not None else (None, None)
+
+    ignored = [
+        name for name, on in (
+            ("-nde", args.no_duplicate_endpoint),
+            ("-s", args.skipfailures),
+            ("-p", args.partial_reprojection),
+        ) if on
+    ]
+    if ignored:
+        print(
+            f"NOTE: {', '.join(ignored)} ignored with -u meters (no reprojection is performed).",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    xs = _meter_ticks(xmin, xmax, xstep)
+    ys = _meter_ticks(ymin, ymax, ystep)
+    if xs.size == 0 and ys.size == 0:
+        raise RuntimeError(
+            f"No grid line falls inside the extent (x: {xmin}..{xmax}, y: {ymin}..{ymax}) "
+            f"for the grid size ({xstep}, {ystep}) m."
+        )
+
+    layer_name = args.layer if args.layer is not None else "grid"
+
+    drv_mem = ogr.GetDriverByName("MEM") or ogr.GetDriverByName("Memory")
+    if drv_mem is None:
+        raise RuntimeError("OGR driver 'MEM' is not available in this GDAL build.")
+    ds_mem = drv_mem.CreateDataSource("mem")
+    if ds_mem is None:
+        raise RuntimeError("Failed to create in-memory datasource.")
+    layer = ds_mem.CreateLayer(layer_name, geom_type=ogr.wkbLineString, srs=t_srs_i)
+    if layer is None:
+        raise RuntimeError("Failed to create in-memory layer.")
+
+    print(export_pretty_wkt(t_srs_i))
+    print("=" * terminal_width)
+
+    layer.CreateField(ogr.FieldDefn("row_no", ogr.OFTInteger))
+    for name in ("x", "y"):
+        field = ogr.FieldDefn(name, ogr.OFTReal)
+        field.SetWidth(18)
+        field.SetPrecision(3)
+        layer.CreateField(field)
+    layer.CreateField(ogr.FieldDefn("grid_type", ogr.OFTString))
+
+    def add_line(row, x=None, y=None, major=None, points=()):
+        line = ogr.Geometry(ogr.wkbLineString)
+        for px, py in points:
+            line.AddPoint(float(px), float(py))
+        feat = ogr.Feature(layer.GetLayerDefn())
+        feat.SetField("row_no", int(row))
+        if x is None:
+            feat.SetFieldNull("x")
+        else:
+            feat.SetField("x", float(x))
+        if y is None:
+            feat.SetFieldNull("y")
+        else:
+            feat.SetField("y", float(y))
+        if major is None:
+            feat.SetFieldNull("grid_type")
+        else:
+            feat.SetField("grid_type", "major" if major else "minor")
+        line.FlattenTo2D()
+        feat.SetGeometry(line)
+        layer.CreateFeature(feat)
+
+    # Lines are straight in the projected CRS, so without an explicit -r only the end points are written.
+    if args.res_given:
+        x_samples = _meter_samples(xmin, xmax, xres)
+        y_samples = _meter_samples(ymin, ymax, yres)
+    else:
+        x_samples = np.array([xmin, xmax], dtype=float)
+        y_samples = np.array([ymin, ymax], dtype=float)
+
+    row = 1
+    for i, y in enumerate(ys):
+        progress_bar(i, ys, "Processing Northings: ")
+        add_line(
+            row, y=y,
+            major=None if ymajor is None else _is_multiple(y, ymajor),
+            points=[(px, y) for px in x_samples],
+        )
+        row += 1
+    sys.stdout.write("\n")
+
+    for i, x in enumerate(xs):
+        progress_bar(i, xs, "Processing Eastings: ")
+        add_line(
+            row, x=x,
+            major=None if xmajor is None else _is_multiple(x, xmajor),
+            points=[(x, py) for py in y_samples],
+        )
+        row += 1
+    sys.stdout.write("\n")
+
+    print("=" * terminal_width)
+    print(f"Meter grid (no reprojection): {_srs_id_label(t_srs_i)}\n")
+
+    gdal.VectorTranslate(
+        outfile,
+        ds_mem,
+        options=gdal.VectorTranslateOptions(
+            format=ogr_driver_name,
+            layers=[layer_name],
+            layerName=layer_name,
+            datasetCreationOptions=ds_create_opts,
+            layerCreationOptions=["SPATIAL_INDEX=YES"],
+        ),
+    )
+
+    if is_gpkg:
+        if applied_overrides:
+            print("WARN: CRS parameter overrides were applied; skip gpkg_spatial_ref_sys.definition_12_063 update.")
+        else:
+            update_gpkg_spatial_ref_sys_with_wkt2_2019(outfile, t_srs_i)
+
+    print("=" * terminal_width)
+    print(f"Output: {outfile}")
+    print(f"Northing (y) lines: {len(ys)}")
+    print(f"Easting (x) lines: {len(xs)}")
+
+    layer = None
+    ds_mem = None
+
+
+_NON_INTERACTIVE_BACKENDS = {"agg", "cairo", "pdf", "pgf", "ps", "svg", "template"}
+
+
+def _geom_parts(geom):
+    """Yield (flat geometry type, geometry) for every point / line part of geom."""
+    gtype = ogr.GT_Flatten(geom.GetGeometryType())
+    if gtype in (ogr.wkbPoint, ogr.wkbLineString):
+        yield gtype, geom
+    else:
+        for k in range(geom.GetGeometryCount()):
+            yield from _geom_parts(geom.GetGeometryRef(k))
+
+
+def _show_quick_view(outfile):
+    """Open a window showing the whole grid written to outfile (-q/--qview).
+
+    The output file is already written when this runs, so any problem here is
+    reported as a warning and does not change the exit status.
+    """
+    try:
+        import matplotlib
+        import matplotlib.pyplot as plt
+        from matplotlib.collections import LineCollection
+    except ImportError:
+        print(
+            "WARNING: -q/--qview requires matplotlib (e.g. 'conda install -c conda-forge matplotlib'); "
+            "Quick View skipped.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+
+    try:
+        backend = matplotlib.get_backend().lower()
+        if backend in _NON_INTERACTIVE_BACKENDS:
+            print(
+                f"WARNING: -q/--qview needs an interactive matplotlib backend (current: '{backend}'); "
+                "Quick View skipped.",
+                file=sys.stderr,
+                flush=True,
+            )
+            return
+
+        ds = ogr.Open(outfile)
+        if ds is None:
+            raise RuntimeError(f"cannot open '{outfile}'")
+
+        major, minor, plain, points = [], [], [], []
+        srs = None
+        for i in range(ds.GetLayerCount()):
+            lyr = ds.GetLayerByIndex(i)
+            if srs is None:
+                srs = lyr.GetSpatialRef()
+            has_type = lyr.GetLayerDefn().GetFieldIndex("grid_type") >= 0
+            for feat in lyr:
+                geom = feat.GetGeometryRef()
+                if geom is None or geom.IsEmpty():
+                    continue
+                grid_type = feat.GetField("grid_type") if has_type else None
+                bucket = major if grid_type == "major" else minor if grid_type == "minor" else plain
+                for gtype, part in _geom_parts(geom):
+                    if gtype == ogr.wkbPoint:
+                        points.append((part.GetX(), part.GetY()))
+                    elif part.GetPointCount() >= 2:
+                        bucket.append(np.array(part.GetPoints(), dtype=float)[:, :2])
+        ds = None
+
+        if not (major or minor or plain or points):
+            print("WARNING: nothing to show in Quick View (no features written).", file=sys.stderr, flush=True)
+            return
+
+        fig, ax = plt.subplots(figsize=(9, 7))
+        for segs, color, width in ((minor, "0.6", 0.5), (plain, "0.3", 0.7), (major, "0.05", 1.1)):
+            if segs:
+                ax.add_collection(LineCollection(segs, colors=color, linewidths=width))
+        if points:
+            px, py = zip(*points)
+            ax.scatter(px, py, s=14, c="tab:red", zorder=3)
+        ax.autoscale()
+        ax.set_aspect("equal")
+        if srs is not None and srs.IsProjected() == 1:
+            unit = srs.GetLinearUnitsName()
+            ax.set_xlabel(f"Easting ({unit})")
+            ax.set_ylabel(f"Northing ({unit})")
+        else:
+            ax.set_xlabel("Longitude (degrees)")
+            ax.set_ylabel("Latitude (degrees)")
+        ax.set_title(os.path.basename(outfile))
+        try:
+            fig.canvas.manager.set_window_title(f"mkgraticule Quick View - {os.path.basename(outfile)}")
+        except Exception:
+            pass
+        print("Quick View window opened (close the window to finish).", flush=True)
+        plt.show()
+    except Exception as exc:
+        print(f"WARNING: Quick View failed: {exc}", file=sys.stderr, flush=True)
+
+
 def main():
     args = get_args()
 
@@ -1521,11 +1821,18 @@ def main():
     if ext not in _EXT_FORMAT_MAP:
         outfile += default_ext
 
+    if args.units == "meters":
+        if fmt_key == "ply":
+            raise RuntimeError("-u meters is not supported with PLY output.")
+        _check_meters_units(args)
+
     outdir = os.path.dirname(outfile)
     if outdir:
         os.makedirs(outdir, exist_ok=True)
 
     if fmt_key == "ply":
+        if args.qview:
+            print("WARNING: -q/--qview is not supported with PLY output; ignored.", file=sys.stderr, flush=True)
         _write_fitted_latlon_ply(args, outfile)
         return
 
@@ -1567,6 +1874,15 @@ def main():
             lat_sp=args.lat_sp,
             lat_sp2=args.lat_sp2,
         )
+
+    if args.units == "meters":
+        _write_meters_grid(
+            args, outfile, ogr_driver_name, ds_create_opts, is_gpkg,
+            t_srs_i, applied_overrides, terminal_width,
+        )
+        if args.qview:
+            _show_quick_view(outfile)
+        return
 
     if t_srs_i.IsGeographic() == 1:
         projected = False
@@ -2036,6 +2352,9 @@ def main():
     layer = None
     point_layer = None
     ds_mem = None
+
+    if args.qview:
+        _show_quick_view(outfile)
 
 
 if __name__ == "__main__":
