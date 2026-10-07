@@ -16,7 +16,7 @@ The window shows the lines written to the output file (and the companion point l
     conda install -c conda-forge matplotlib
     ```
 
-    or, for a pip-based environment, `pip install mkgraticule_planet[quickview]`.
+    or, for a source checkout, `pip install -e .[quickview]`.
 
 - The output file is written before the window opens. If matplotlib is missing, or only a non-interactive backend (for example `Agg`) is available, a warning is printed and the command still finishes successfully with the file written.
 - The command exits when the window is closed.
