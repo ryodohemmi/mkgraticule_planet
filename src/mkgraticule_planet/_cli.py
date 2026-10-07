@@ -116,6 +116,10 @@ def _reject_unknown_option_tokens(parser, argv):
             message += f" (did you mean {suggestion[0]}?)"
         parser.error(message)
 
+_METER_DEFAULT_GRID = (5000.0, 5000.0)
+_METER_DEFAULT_RES = (100.0, 100.0)
+
+
 class _StoreGiven(argparse.Action):
     """Store the value and set ``<dest>_given`` so an explicit option can be told from its default."""
 
@@ -302,7 +306,9 @@ def get_args():
         nargs=2,
         metavar=("xstep", "ystep"),
         default=[5, 5],
-        help="Set grid size [xstep ystep] in degrees (in meters with -u meters)",
+        action=_StoreGiven,
+        help="Set grid size [xstep ystep] in degrees.\
+            \nWith -u meters, the value is in meters and the default is 5000 5000.",
     )
     parser.add_argument(
         "-r",
@@ -313,8 +319,10 @@ def get_args():
         default=[0.1, 0.1],
         action=_StoreGiven,
         help="Set resolution to polygonize grids [xres yres] in degrees.\
-            \nWith -u meters, the value is in meters; if omitted, lines are written as straight\
-            \nsegments between the extent edges (no intermediate vertices).",
+            \nWith -u meters, the value is in meters and the default is 100 100.\
+            \nRecommended range: 0.1 (10 with -u meters) <= res <= step/2.\
+            \nBelow the lower bound, or if the estimated output exceeds 100 MB,\
+            \nthe estimated size is shown and a yes/no confirmation is asked.",
     )
     parser.add_argument(
         "-m",
@@ -354,6 +362,12 @@ def get_args():
         default="degrees",
         help="Unit of -g/-r/-m/-e. 'meters' generates an easting/northing grid directly in the\
             \nprojected CRS (no reprojection) and requires a projected CRS in meters and -e.",
+    )
+    parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Answer yes to the output-size confirmation (needed when stdin is not a terminal).",
     )
     parser.add_argument(
         "-q",
@@ -416,10 +430,18 @@ def get_args():
         help="Overwrite the 2nd standard parallel in the target projected CRS (degrees).",
     )
 
-    parser.set_defaults(offset_distance=0.0, offset_fraction=0.0, extent_given=False, res_given=False)
+    parser.set_defaults(
+        offset_distance=0.0, offset_fraction=0.0, extent_given=False, res_given=False, grid_given=False
+    )
 
     _reject_unknown_option_tokens(parser, sys.argv[1:])
     args = parser.parse_args()
+
+    if args.units == "meters":
+        if not args.grid_given:
+            args.grid = list(_METER_DEFAULT_GRID)
+        if not args.res_given:
+            args.res = list(_METER_DEFAULT_RES)
 
     xstep, ystep = args.grid
     xres, yres = args.res
@@ -1537,6 +1559,116 @@ def _add_projection_center_point(
     point_layer.CreateFeature(feat)
     feat = None
 
+_RES_FLOOR = {"degrees": 0.1, "meters": 10.0}
+_SIZE_CONFIRM_BYTES = 100e6
+_BYTES_PER_VERTEX = 16  # 2D double coordinates in WKB
+
+
+def _count_samples(vmin, vmax, step):
+    """Number of values np.arange(vmin, vmax + 1e-12, step) would yield (without allocating them)."""
+    return int(np.floor((vmax + 1e-12 - vmin) / step)) + 1
+
+
+def _estimate_grid(args):
+    """Return (lines, vertices) the grid would contain. An upper bound; needs no CRS."""
+    xstep, ystep = args.grid
+    xres, yres = args.res
+    ulx, uly, lrx, lry = args.extent
+    xmin, xmax = min(ulx, lrx), max(ulx, lrx)
+    ymin, ymax = min(lry, uly), max(lry, uly)
+
+    if args.units == "meters":
+        n_x = max(0, int(np.floor(xmax / xstep + 1e-9)) - int(np.ceil(xmin / xstep - 1e-9)) + 1)
+        n_y = max(0, int(np.floor(ymax / ystep + 1e-9)) - int(np.ceil(ymin / ystep - 1e-9)) + 1)
+        per_h = int(np.ceil((xmax - xmin) / xres)) + 1
+        per_v = int(np.ceil((ymax - ymin) / yres)) + 1
+    else:
+        n_x = _count_samples(xmin, xmax, xstep)
+        n_y = _count_samples(ymin, ymax, ystep)
+        if args.no_duplicate_endpoint and abs((xmax - xmin) - 360.0) < 1e-9 and n_x > 1:
+            n_x -= 1
+        per_h = _count_samples(xmin, xmax, xres)
+        per_v = _count_samples(ymin, ymax, yres)
+
+    # n_y horizontal lines run along x (per_h vertices each); n_x vertical lines run along y (per_v each).
+    return n_x + n_y, n_y * per_h + n_x * per_v
+
+
+def _format_size(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1000:
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1000.0
+    return f"{n:.1f} TB"
+
+
+def _ask_yes_no(question):
+    """Ask until the answer is y/yes or n/no (case-insensitive). EOF counts as no."""
+    while True:
+        try:
+            answer = input(question).strip().lower()
+        except EOFError:
+            return False
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
+        print("Please answer 'y' (yes) or 'n' (no).")
+
+
+def _confirm_output_size(args):
+    """Warn and ask for confirmation when -r is below its recommended lower bound or the output is large.
+
+    Recommended range per axis: floor <= res <= step/2, with floor = 0.1 degrees or 10 m.
+    When step/2 is smaller than the floor, the floor is relaxed to step/2.
+    Exits with status 1 (before anything is written) unless the user answers yes or -y is given.
+    """
+    unit = "m" if args.units == "meters" else "degrees"
+    floor = _RES_FLOOR[args.units]
+    low, high = [], []
+    for name, res, step in (("xres", args.res[0], args.grid[0]), ("yres", args.res[1], args.grid[1])):
+        lower = min(floor, step / 2.0)
+        if res < lower * (1 - 1e-9):
+            low.append(f"{name}={res:g} is below the recommended lower bound {lower:g} {unit}")
+        elif res > step / 2.0 * (1 + 1e-9):
+            high.append(f"{name}={res:g} exceeds step/2 ({step / 2.0:g} {unit}); lines may look coarse")
+
+    lines, vertices = _estimate_grid(args)
+    size = vertices * _BYTES_PER_VERTEX
+
+    for msg in high:
+        print(f"NOTE: {msg}.", file=sys.stderr, flush=True)
+
+    reasons = list(low)
+    if size > _SIZE_CONFIRM_BYTES:
+        reasons.append(f"estimated output size exceeds {_format_size(_SIZE_CONFIRM_BYTES)}")
+    if not reasons:
+        return
+
+    print("WARNING: " + "; ".join(reasons) + ".", file=sys.stderr)
+    print(
+        f"  Estimated output: ~{_format_size(size)} ({vertices:,} vertices in {lines:,} lines; "
+        "approximate, geometry only).",
+        file=sys.stderr,
+        flush=True,
+    )
+
+    if args.yes:
+        print("  Continuing because -y/--yes was given.", file=sys.stderr, flush=True)
+        return
+    if not sys.stdin.isatty():
+        print(
+            "  Aborted: standard input is not a terminal, so the confirmation cannot be asked.\n"
+            "  Re-run interactively, or pass -y/--yes to continue without asking.",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
+    if not _ask_yes_no("Continue? [y/N]: "):
+        print("Aborted: no output was written.", file=sys.stderr, flush=True)
+        sys.exit(1)
+
+
 def _check_meters_units(args):
     """Validate -u meters: the target CRS must be projected with the metre as linear unit."""
     srs = osr.SpatialReference()
@@ -1646,13 +1778,8 @@ def _write_meters_grid(args, outfile, ogr_driver_name, ds_create_opts, is_gpkg,
         feat.SetGeometry(line)
         layer.CreateFeature(feat)
 
-    # Lines are straight in the projected CRS, so without an explicit -r only the end points are written.
-    if args.res_given:
-        x_samples = _meter_samples(xmin, xmax, xres)
-        y_samples = _meter_samples(ymin, ymax, yres)
-    else:
-        x_samples = np.array([xmin, xmax], dtype=float)
-        y_samples = np.array([ymin, ymax], dtype=float)
+    x_samples = _meter_samples(xmin, xmax, xres)
+    y_samples = _meter_samples(ymin, ymax, yres)
 
     row = 1
     for i, y in enumerate(ys):
@@ -1825,6 +1952,9 @@ def main():
         if fmt_key == "ply":
             raise RuntimeError("-u meters is not supported with PLY output.")
         _check_meters_units(args)
+
+    if fmt_key != "ply":
+        _confirm_output_size(args)
 
     outdir = os.path.dirname(outfile)
     if outdir:

@@ -49,15 +49,18 @@ usage <- function(status = 0) {
     "      With -u meters, the extent is given in projected CRS meters and is required.\n",
     "      Legacy aliases: --lon-min --lat-max --lon-max --lat-min\n",
     "  -g, --grid xstep ystep\n",
-    "      Set grid size [xstep ystep] in degrees (in meters with -u meters)\n",
+    "      Set grid size [xstep ystep] in degrees (required)\n",
+    "      With -u meters, the value is in meters and the default is 5000 5000.\n",
     "      xstep = meridian interval, ystep = parallel interval\n",
     "      Legacy aliases: --meridian-step --parallel-step\n",
     "  -r, --res xres yres\n",
-    "      Set resolution to polygonize grids [xres yres] in degrees\n",
+    "      Set resolution to polygonize grids [xres yres] in degrees (default: 0.5 0.1)\n",
     "      xres = longitude sampling for parallels\n",
     "      yres = latitude sampling for meridians\n",
-    "      With -u meters, the value is in meters; if omitted, lines are written as\n",
-    "      straight segments between the extent edges (no intermediate vertices).\n",
+    "      With -u meters, the value is in meters and the default is 100 100.\n",
+    "      Recommended range: 0.1 (10 with -u meters) <= res <= step/2.\n",
+    "      Below the lower bound, or if the estimated output exceeds 100 MB,\n",
+    "      the estimated size is shown and a yes/no confirmation is asked.\n",
     "      Legacy aliases: --vertex-step-lon --vertex-step-lat\n",
     "  -m, --major xmajor ymajor\n",
     "      Major graticule interval [xmajor ymajor] in degrees (in meters with -u meters).\n",
@@ -67,6 +70,8 @@ usage <- function(status = 0) {
     "      Unit of -g/-r/-m/-e: 'degrees' (default) or 'meters'.\n",
     "      'meters' generates an easting/northing grid directly in the projected CRS\n",
     "      (no reprojection) and requires a projected CRS in meters and -e.\n",
+    "  -y, --yes\n",
+    "      Answer yes to the output-size confirmation (needed when stdin is not a terminal).\n",
     "  -q, --qview\n",
     "      Quick View: after writing the output, open a window showing the whole grid\n",
     "      (close the window to finish).\n",
@@ -177,6 +182,12 @@ parse_args <- function(args) {
       }
       res[["units"]] <- units
       i <- i + 2
+      next
+    }
+
+    if (key %in% c("-y", "--yes")) {
+      res[["yes"]] <- TRUE
+      i <- i + 1
       next
     }
 
@@ -1030,6 +1041,114 @@ meter_samples <- function(vmin, vmax, res) {
   c(s, vmax)
 }
 
+RES_FLOOR_DEGREES <- 0.1
+RES_FLOOR_METERS <- 10
+SIZE_CONFIRM_BYTES <- 100e6
+BYTES_PER_VERTEX <- 16  # 2D double coordinates in WKB
+
+# Number of values seq(vmin, vmax + 1e-12, by = step) would yield (without allocating them).
+count_samples <- function(vmin, vmax, step) {
+  floor((vmax + 1e-12 - vmin) / step) + 1
+}
+
+# Lines and vertices the grid would contain. An upper bound; needs no CRS.
+estimate_grid <- function(is_meters, xmin, xmax, ymin, ymax, xstep, ystep, xres, yres, nde) {
+  if (is_meters) {
+    n_x <- max(0, floor(xmax / xstep + 1e-9) - ceiling(xmin / xstep - 1e-9) + 1)
+    n_y <- max(0, floor(ymax / ystep + 1e-9) - ceiling(ymin / ystep - 1e-9) + 1)
+    per_h <- ceiling((xmax - xmin) / xres) + 1
+    per_v <- ceiling((ymax - ymin) / yres) + 1
+  } else {
+    n_x <- count_samples(xmin, xmax, xstep)
+    n_y <- count_samples(ymin, ymax, ystep)
+    if (nde && abs((xmax - xmin) - 360) < 1e-9 && n_x > 1) n_x <- n_x - 1
+    per_h <- count_samples(xmin, xmax, xres)
+    per_v <- count_samples(ymin, ymax, yres)
+  }
+  # n_y horizontal lines run along x (per_h vertices each); n_x vertical lines run along y (per_v each).
+  list(lines = n_x + n_y, vertices = n_y * per_h + n_x * per_v)
+}
+
+format_size <- function(n) {
+  for (u in c("B", "KB", "MB", "GB")) {
+    if (n < 1000) return(if (u == "B") sprintf("%.0f B", n) else sprintf("%.1f %s", n, u))
+    n <- n / 1000
+  }
+  sprintf("%.1f TB", n)
+}
+
+# Ask until the answer is y/yes or n/no (case-insensitive). End of input counts as no.
+ask_yes_no <- function(question) {
+  con <- file("stdin")
+  open(con)
+  on.exit(close(con), add = TRUE)
+  repeat {
+    cat(question)
+    flush.console()
+    answer <- readLines(con, n = 1L, warn = FALSE)
+    if (length(answer) == 0L) return(FALSE)
+    answer <- tolower(trimws(answer))
+    if (answer %in% c("y", "yes")) return(TRUE)
+    if (answer %in% c("n", "no")) return(FALSE)
+    cat("Please answer 'y' (yes) or 'n' (no).\n")
+  }
+}
+
+# Warn and ask for confirmation when -r is below its recommended lower bound or the output is large.
+# Recommended range per axis: floor <= res <= step/2, with floor = 0.1 degrees or 10 m;
+# when step/2 is smaller than the floor, the floor is relaxed to step/2.
+# Quits with status 1 (before anything is written) unless the user answers yes or -y is given.
+confirm_output_size <- function(is_meters, xmin, xmax, ymin, ymax, xstep, ystep, xres, yres, nde, yes) {
+  unit <- if (is_meters) "m" else "degrees"
+  floor_res <- if (is_meters) RES_FLOOR_METERS else RES_FLOOR_DEGREES
+  low <- character(0)
+  high <- character(0)
+  for (a in list(list("xres", xres, xstep), list("yres", yres, ystep))) {
+    lower <- min(floor_res, a[[3]] / 2)
+    if (a[[2]] < lower * (1 - 1e-9)) {
+      low <- c(low, sprintf("%s=%g is below the recommended lower bound %g %s", a[[1]], a[[2]], lower, unit))
+    } else if (a[[2]] > a[[3]] / 2 * (1 + 1e-9)) {
+      high <- c(high, sprintf("%s=%g exceeds step/2 (%g %s); lines may look coarse", a[[1]], a[[2]], a[[3]] / 2, unit))
+    }
+  }
+
+  est <- estimate_grid(is_meters, xmin, xmax, ymin, ymax, xstep, ystep, xres, yres, nde)
+  size <- est$vertices * BYTES_PER_VERTEX
+
+  for (msg in high) message(sprintf("NOTE: %s.", msg))
+
+  reasons <- low
+  if (size > SIZE_CONFIRM_BYTES) {
+    reasons <- c(reasons, sprintf("estimated output size exceeds %s", format_size(SIZE_CONFIRM_BYTES)))
+  }
+  if (length(reasons) == 0L) return(invisible(NULL))
+
+  message("WARNING: ", paste(reasons, collapse = "; "), ".")
+  message(sprintf(
+    "  Estimated output: ~%s (%s vertices in %s lines; approximate, geometry only).",
+    format_size(size),
+    format(est$vertices, big.mark = ",", scientific = FALSE),
+    format(est$lines, big.mark = ",", scientific = FALSE)
+  ))
+
+  if (yes) {
+    message("  Continuing because -y/--yes was given.")
+    return(invisible(NULL))
+  }
+  if (!isatty(stdin())) {
+    message(paste0(
+      "  Aborted: standard input is not a terminal, so the confirmation cannot be asked.\n",
+      "  Re-run interactively, or pass -y/--yes to continue without asking."
+    ))
+    quit(status = 1)
+  }
+  if (!ask_yes_no("Continue? [y/N]: ")) {
+    message("Aborted: no output was written.")
+    quit(status = 1)
+  }
+  invisible(NULL)
+}
+
 open_quick_view_window <- function() {
   sysname <- Sys.info()[["sysname"]]
   if (identical(sysname, "Windows")) {
@@ -1089,10 +1208,13 @@ lat_min   <- to_num(get_optional(opts, "lat-min", "-90"),  "--lat-min / -e[4]")
 lat_max   <- to_num(get_optional(opts, "lat-max",  "90"),  "--lat-max / -e[2]")
 lon_min   <- to_num(get_optional(opts, "lon-min", "-180"), "--lon-min / -e[1]")
 lon_max   <- to_num(get_optional(opts, "lon-max",  "180"), "--lon-max / -e[3]")
-mer_step  <- to_num(get_required(opts, "meridian-step"), "--meridian-step / -g[1]")
-par_step  <- to_num(get_required(opts, "parallel-step"), "--parallel-step / -g[2]")
-vstep_lat <- to_num(get_optional(opts, "vertex-step-lat", "0.1"), "--vertex-step-lat / -r[2]")
-vstep_lon <- to_num(get_optional(opts, "vertex-step-lon", "0.5"), "--vertex-step-lon / -r[1]")
+units     <- get_optional(opts, "units", "degrees")
+is_meters <- identical(units, "meters")
+# With -u meters, -g and -r have defaults (5000 m / 100 m); in degree mode -g is required.
+mer_step  <- to_num(if (is_meters) get_optional(opts, "meridian-step", "5000") else get_required(opts, "meridian-step"), "--meridian-step / -g[1]")
+par_step  <- to_num(if (is_meters) get_optional(opts, "parallel-step", "5000") else get_required(opts, "parallel-step"), "--parallel-step / -g[2]")
+vstep_lat <- to_num(get_optional(opts, "vertex-step-lat", if (is_meters) "100" else "0.1"), "--vertex-step-lat / -r[2]")
+vstep_lon <- to_num(get_optional(opts, "vertex-step-lon", if (is_meters) "100" else "0.5"), "--vertex-step-lon / -r[1]")
 
 assert_positive(mer_step, "--meridian-step / -g[1]")
 assert_positive(par_step, "--parallel-step / -g[2]")
@@ -1138,9 +1260,8 @@ if (projected && (!is.null(lat_orig) || !is.null(lat_sp) || !is.null(lat_sp2))) 
   crs_proj <- ov$crs
   applied_overrides <- ov$applied
 }
-units <- get_optional(opts, "units", "degrees")
 qview <- isTRUE(get_optional(opts, "qview", FALSE))
-if (identical(units, "meters")) {
+if (is_meters) {
   check_meters_units(crs_proj, projected)
   extent_keys <- c("lon-min", "lat-max", "lon-max", "lat-min")
   if (any(vapply(extent_keys, function(k) is.null(opts[[k]]), logical(1)))) {
@@ -1149,6 +1270,11 @@ if (identical(units, "meters")) {
   if (lon_min >= lon_max) stop(sprintf("extent requires ulx < lrx (got ulx=%s, lrx=%s).", lon_min, lon_max))
   if (lat_max <= lat_min) stop(sprintf("extent requires uly > lry (got uly=%s, lry=%s).", lat_max, lat_min))
 }
+confirm_output_size(
+  is_meters, lon_min, lon_max, lat_min, lat_max, mer_step, par_step, vstep_lon, vstep_lat,
+  isTRUE(get_optional(opts, "no-duplicate-endpoint", FALSE)),
+  isTRUE(get_optional(opts, "yes", FALSE))
+)
 term_width <- terminal_width()
 center <- if (projected) get_projection_center_lat_lon(crs_proj) else list(lat = NULL, lon = NULL)
 if (projected && is.null(center$lon)) center$lon <- 0
@@ -1178,9 +1304,8 @@ if (identical(units, "meters")) {
     ))
   }
 
-  # Lines are straight in the projected CRS, so without an explicit -r only the end points are written.
-  x_samples <- if (!is.null(opts[["vertex-step-lon"]])) meter_samples(lon_min, lon_max, vstep_lon) else c(lon_min, lon_max)
-  y_samples <- if (!is.null(opts[["vertex-step-lat"]])) meter_samples(lat_min, lat_max, vstep_lat) else c(lat_min, lat_max)
+  x_samples <- meter_samples(lon_min, lon_max, vstep_lon)
+  y_samples <- meter_samples(lat_min, lat_max, vstep_lat)
 
   print_separator(term_width)
   show_wkt(crs_proj)
