@@ -6,7 +6,7 @@ package:
 
 source:
   url: https://github.com/ryodohemmi/mkgraticule_planet/archive/refs/tags/v{{ version }}.tar.gz
-  # Add sha256 after the v{{ version }} GitHub release tarball is published.
+  sha256: f28d0851285787f2404e3d5431ce20acc2a4bbbe7f9fa8781af4074c8491a404
 
 build:
   noarch: python
