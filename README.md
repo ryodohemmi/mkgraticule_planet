@@ -11,6 +11,8 @@ Currently, two CLI implementations are available:
 
 The fitted 3D PLY output for OBJ/mesh shape models is available in the Python implementation only.
 
+Full documentation: https://mkgraticule-planet.readthedocs.io/
+
 ## Table of Contents
 
 - [Features](#features)
@@ -38,6 +40,8 @@ The fitted 3D PLY output for OBJ/mesh shape models is available in the Python im
 * Generates degree-based latitude/longitude graticules even when the output CRS is a metre-based projected CRS
 * GeoPackage and SpatiaLite output
 * Python-only fitted 3D PLY output for OBJ/mesh shape models
+* Optional metre-based mode `-u/--units meters`: writes a planar easting/northing grid directly in a metre-based projected CRS (no reprojection)
+* Quick View `-q/--qview`: opens a window showing the whole grid right after the file is written
 * Compatible with **GDAL 3.x**
 * Two CLI implementations for 2D GIS output:
   * Python version for [GDAL](https://github.com/OSGeo/gdal)-centric workflows (conda-forge / standalone)
@@ -95,6 +99,12 @@ conda activate myenv
 > resolve the GDAL dependency reliably. Installing via conda is recommended.
 
 For Python PLY output, `pip install embreex` in the same conda environment is recommended; the conda package includes the `trimesh`/`rtree` fallback but not Embree acceleration.
+
+For Quick View (`-q/--qview`) with the Python implementation, install matplotlib in the same environment (it is an optional dependency and is not installed with the conda package):
+
+```sh
+conda install -c conda-forge matplotlib
+```
 
 #### Option 2: Use standalone scripts directly
 
@@ -172,7 +182,7 @@ For a compact summary of conda download size and post-install environment size f
 
 ### Degree-based graticules in projected CRSs
 
-Unlike QGIS's built-in [**Vector creation - Create grid (Vector > Research Tools > Create Grid)**](https://docs.qgis.org/latest/en/docs/user_manual/processing_algs/qgis/vectorcreation.html#create-grid), which defines grid spacing in the map units of the output CRS, `mkgraticule_planet` defines meridians and parallels in degrees in geographic coordinates and then reprojects them. It can therefore create a true degree-based latitude/longitude graticule directly in a metre-based projected CRS, in addition to supporting IAU 2015 planetary coordinate systems.
+Unlike QGIS's built-in [**Vector creation - Create grid (Vector > Research Tools > Create Grid)**](https://docs.qgis.org/latest/en/docs/user_manual/processing_algs/qgis/vectorcreation.html#create-grid), which defines grid spacing in the map units of the output CRS, `mkgraticule_planet` defines meridians and parallels in degrees in geographic coordinates and then reprojects them. It can therefore create a true degree-based latitude/longitude graticule directly in a metre-based projected CRS, in addition to supporting IAU 2015 planetary coordinate systems. (When a planar metre-based grid is what you want, `-u meters` provides one; see [Metre-based grids](#metre-based-grids--u-meters).)
 
 This distinction matters because QGIS's on-the-fly reprojection affects how layers are rendered in a project, but does not rewrite their stored coordinates. When a vector layer is imported into a database such as a GeoPackage, QGIS uses the source layer's CRS as the default output CRS rather than adopting the CRS of other layers already stored in the destination. A degree-based graticule may therefore appear correctly over metre-based projected data in the QGIS map canvas while remaining stored in angular coordinates, unless it is explicitly reprojected during export or import. `mkgraticule_planet` avoids this extra and potentially error-prone step by defining the graticule spacing in degrees and writing its geometries already transformed into the requested projected CRS. See the QGIS documentation on [on-the-fly reprojection](https://docs.qgis.org/latest/en/docs/training_manual/vector_analysis/reproject_transform.html) and [database layer imports](https://docs.qgis.org/latest/en/docs/user_manual/introduction/browser.html#importing-a-vector-layer).
 
@@ -244,7 +254,7 @@ To override auto-detection, use `-f/--format`:
 python mkgraticule_planet.py -f spatialite ... out.db
 ```
 
-The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ymin` ("ullr" style).
+The `-e` option specifies the geographic extent in the order: `xmin ymax xmax ymin` ("ullr" style). With `-u meters` it is given in projected metres instead.
 
 ### Basic example
 
@@ -328,6 +338,57 @@ Rscript mkgraticule_planet.R -g 10 10 \
                              -e -180 90 180 -90 \
                              phobos_graticule.gpkg
 ```
+
+### Metre-based grids (`-u meters`)
+
+By default, `-g`, `-r`, `-m` and `-e` are in degrees. With `-u meters` (default: `-u degrees`) they are interpreted as metres in the projected output CRS, and an easting/northing grid is written directly in that CRS, without reprojection. This is a planar grid similar to QGIS's Create Grid, not a degree-based graticule.
+
+- Requires a projected `-srs` whose linear unit is the metre; otherwise the command stops with an error.
+- `-e` is required and is given in projected metres (`xmin ymax xmax ymin`).
+- Grid lines are placed at integer multiples of the step (anchored at 0) and span the extent.
+- Without `-r`, each line is written as a straight segment between the extent edges. With `-r`, vertices are added at that spacing (in metres).
+- Output fields are `x`, `y` and `grid_type` (see [Output fields](#output-fields)); no companion point layer is written.
+- Not available for PLY output. `-nde` (and, in Python, `-s` and `-p`) have no effect.
+
+#### Python / GDAL (conda)
+```sh
+mkgraticule -u meters \
+            -srs IAU_2015:30135 \
+            -g 100000 100000 \
+            -m 500000 500000 \
+            -e -500000 500000 500000 -500000 \
+            moon_south_pole_grid_100km.gpkg
+```
+#### Python / GDAL (standalone)
+```sh
+python mkgraticule_planet.py -u meters \
+                             -srs IAU_2015:30135 \
+                             -g 100000 100000 \
+                             -m 500000 500000 \
+                             -e -500000 500000 500000 -500000 \
+                             moon_south_pole_grid_100km.gpkg
+```
+#### R / sf (standalone)
+```sh
+Rscript mkgraticule_planet.R -u meters \
+                             -srs IAU_2015:30135 \
+                             -g 100000 100000 \
+                             -m 500000 500000 \
+                             -e -500000 500000 500000 -500000 \
+                             moon_south_pole_grid_100km.gpkg
+```
+
+### Quick View (`-q`)
+
+Add `-q/--qview` to open a window showing the whole grid right after the output file is written. Close the window to finish the command.
+
+```sh
+mkgraticule -q -g 10 10 -srs IAU_2015:30100 moon_graticule.gpkg
+```
+
+- Python: requires [matplotlib](https://matplotlib.org/) (`conda install -c conda-forge matplotlib`), which is an optional dependency. If matplotlib or an interactive display is unavailable, a warning is printed and the output file is still written.
+- R: uses base graphics (a window on Windows, macOS and X11).
+- Not available for PLY output (ignored with a warning).
 
 ## Projected CRS considerations
 
@@ -452,6 +513,15 @@ mkgraticule -srs ESRI:54009 \
 | lon_360    | longitude label (0° … 360°) |
 | lon_360e   | longitude label (0° … 360°E) |
 | lon_360w   | longitude label (0° … 360°W) |
+| grid_type  | `"major"` / `"minor"` when `--major` is used (otherwise NULL) |
+
+### Metre grid layer (`-u meters`)
+
+| Field      | Description |
+| ---------- | ----------- |
+| fid        | feature id |
+| x          | easting of a vertical line, in projected metres (NULL for horizontal lines) |
+| y          | northing of a horizontal line, in projected metres (NULL for vertical lines) |
 | grid_type  | `"major"` / `"minor"` when `--major` is used (otherwise NULL) |
 
 ### Companion point layer (`point`)

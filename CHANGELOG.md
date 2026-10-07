@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-10-07
+
+### Added
+- Added `-q/--qview` (Quick View): opens a window showing the whole grid right after the output file is written. The Python implementation uses matplotlib, which is an optional dependency (`pip install mkgraticule_planet[quickview]` or `conda install matplotlib`); the R script uses base graphics.
+- Added `-u/--units {degrees,meters}` (default `degrees`). With `-u meters`, `-g/-r/-m/-e` are interpreted as projected metres and an easting/northing grid is written directly in the output CRS without reprojection. It requires a projected CRS whose linear unit is the metre and an explicit `-e`. Output fields are `x`, `y` and `grid_type`.
+- Added a readthedocs documentation site (MkDocs) built from `docs/`.
+
+### Changed
+- Updated Python package, standalone Python script, standalone R script, conda recipe, and citation metadata to `1.2.0`.
+- Normalized the line endings of `src/mkgraticule_planet/_cli.py` to LF so it is byte-identical to `standalone/mkgraticule_planet.py`.
+
+### Notes
+- `-q` and `-u meters` are not available for PLY output.
+
 ## [1.1.1] - 2026-05-26
 
 ### Changed
