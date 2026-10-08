@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.1] - 2026-10-08
+
+### Changed
+- Raised the minimum Python version from 3.9 to 3.11 to follow conda-forge's `python_min` (CFEP-25): `requires-python`, the Python classifiers, the conda recipe and the PLY environment file are updated. The standalone scripts are unchanged apart from their version.
+- Updated Python package, standalone Python script, standalone R script, conda recipe, and citation metadata to `1.2.1`.
+
 ## [1.2.0] - 2026-10-07
 
 ### Added

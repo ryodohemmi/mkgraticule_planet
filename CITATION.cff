@@ -12,8 +12,8 @@ repository-code: "https://github.com/ryodohemmi/mkgraticule_planet"
 url: "https://github.com/ryodohemmi/mkgraticule_planet"
 
 license: Apache-2.0
-version: 1.2.0
-date-released: 2026-10-07
+version: 1.2.1
+date-released: 2026-10-08
 
 doi: 10.5281/zenodo.18864189
 

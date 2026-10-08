@@ -1,4 +1,4 @@
-{% set version = "1.2.0" %}
+{% set version = "1.2.1" %}
 
 package:
   name: mkgraticule-planet
@@ -6,7 +6,7 @@ package:
 
 source:
   url: https://github.com/ryodohemmi/mkgraticule_planet/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: f28d0851285787f2404e3d5431ce20acc2a4bbbe7f9fa8781af4074c8491a404
+  # Add sha256 after the v{{ version }} GitHub release tarball is published.
 
 build:
   noarch: python
@@ -18,11 +18,11 @@ build:
 
 requirements:
   host:
-    - python >=3.9
+    - python >=3.11
     - pip
     - setuptools >=68.0
   run:
-    - python >=3.9
+    - python >=3.11
     - numpy
     - gdal
     - trimesh
