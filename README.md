@@ -11,6 +11,25 @@ Currently, two CLI implementations are available:
 
 The fitted 3D PLY output for OBJ/mesh shape models is available in the Python implementation only.
 
+### Python and R feature comparison
+
+| Feature | Python / GDAL | R / sf |
+| ------- | ------------- | ------ |
+| GeoPackage / SpatiaLite, degree / metre grids | Yes | Yes |
+| Labels, major/minor grids, 360° endpoint de-duplication | Yes | Yes |
+| Projection parameter overrides and companion point layer | Yes | Yes |
+| Quick View | Optional matplotlib | Base R graphics |
+| `--dry-run`, `--metadata`, failed-output protection | Yes | Yes |
+| `-s` skip failures / `-p` partial reprojection | Yes | No CLI switches; uses sf transformation behaviour |
+| Fitted 3D PLY | Yes | No |
+| Degree-mode default `-g` | `5 5` | Required |
+| Degree-mode default `-r` | `0.1 0.1` | `0.5 0.1` |
+| Metre-mode default `-g` / `-r` | `5000 5000` / `100 100` | Same |
+| Distribution | conda-forge package / standalone | Standalone |
+
+See the [CLI reference](docs/cli-reference.md) for option details and
+[development guide](docs/development.md) for the shared Python/R tests and GitHub Actions CI.
+
 Full documentation: https://mkgraticule-planet.readthedocs.io/
 
 ## Table of Contents
@@ -24,6 +43,7 @@ Full documentation: https://mkgraticule-planet.readthedocs.io/
   - [Planetary CRS caveats in QGIS 4.x](#planetary-crs-caveats-in-qgis-4x)
 - [Why Shapefile and GeoJSON export are not supported](#why-shapefile-and-geojson-export-are-not-supported)
 - [Usage](#usage)
+  - [Preview and generation records](#preview-and-generation-records)
 - [Projected CRS considerations](#projected-crs-considerations)
 - [Planetary CRS](#planetary-crs)
 - [QGIS examples](#qgis-examples)
@@ -51,7 +71,7 @@ Full documentation: https://mkgraticule-planet.readthedocs.io/
 * Safer handling for projected CRS with limited domains:
   * abort on projected + near-global extent unless `-s/--skipfailures` is used
   * optional `-p/--partial-reprojection` for partial output near projection-domain limits
-* Override Lambert Conic Conformal projection parameters via `-lo` (latitude of origin), `-ls` (1st standard parallel), and `-ls2` (2nd standard parallel), allowing customization of the IAU defaults (0°, 20°, 60°)
+* Override Lambert Conic Conformal projection parameters via `-lo` (latitude of origin), `-ls` (1st standard parallel), and `-ls2` (2nd standard parallel), allowing customization of the target CRS defaults
 * Optional endpoint de-duplication for 360° longitude spans: `-nde/--no-duplicate-endpoint`
 * Automatic companion point layer (`point`) for projected CRS:
   * collapsed graticule features at projection singularities
@@ -217,6 +237,27 @@ GeoJSON is also not supported as a primary output format because RFC 7946 GeoJSO
 For this reason, the 2D GIS outputs focus on formats that preserve CRS information more explicitly: GeoPackage (`.gpkg`) for most users and SpatiaLite (`.sqlite`) for SQLite-based spatial workflows.
 
 ## Usage
+
+### Preview and generation records
+
+```sh
+# Check settings and approximate size without creating files or opening Quick View.
+mkgraticule --dry-run -g 10 10 -srs IAU_2015:30100 moon.gpkg
+
+# Optionally store the generation settings inside the output.
+mkgraticule --metadata -g 10 10 -srs IAU_2015:30100 moon.gpkg
+```
+
+Both options are also available in the standalone Python and R scripts. Metadata
+recording is off by default. With `--metadata`, GeoPackage and SpatiaLite store a
+`mkgraticule_metadata` key/value table; Python PLY stores header comments.
+See [output safety and generation records](docs/usage.md#output-safety-and-generation-records).
+
+Existing output files are still replaced automatically, including all their layers.
+Generation and read-back validation finish in a temporary directory beside the
+destination before replacement, so a failed generation leaves the existing file
+intact. The final 2D summary reports saved feature counts read from the output,
+including a separate count of empty line geometries.
 
 After installation, the recommended command is:
 

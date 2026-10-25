@@ -1,5 +1,83 @@
 # Usage
 
+## Output safety and generation records
+
+Existing output files are replaced automatically, including any other layers in
+the file. Output is first generated in a temporary directory on the destination
+filesystem, closed, and (for 2D GIS output) read back for validation. Only then is
+the destination replaced. Errors during generation, metadata recording or
+replacement leave the previous output intact. Temporary files are cleaned up on
+normal completion or handled errors. Enough disk space for both the old and new
+files is required. SQLite journal files at the destination block replacement;
+close applications using that output and retry. This does not coordinate concurrent
+writers or provide recovery from a process kill or power loss.
+
+The 2D summary shows **saved latitude/longitude lines** (or northing/easting lines),
+**saved line features**, **empty line geometries**, and **saved point features**.
+These are counted from the written output. Collapsed lines are in the point layer;
+features skipped during reprojection are absent from the saved counts. Empty line
+features, if present, are included in the saved totals and reported separately.
+An output with no non-empty grid lines is treated as a failure.
+
+### Preview without writing (`--dry-run`)
+
+```sh
+mkgraticule --dry-run -g 10 10 -r 0.5 0.5 -srs IAU_2015:30100 moon.gpkg
+Rscript standalone/mkgraticule_planet.R --dry-run -g 10 10 moon.gpkg
+```
+
+Validates the options and CRS and shows the format, effective CRS, extent, units,
+grid spacing, sampling spacing, major intervals, estimated line/vertex counts and
+approximate geometry size. It also reports whether an existing output would be
+replaced and whether metadata recording is enabled. It creates no directories or
+files, asks no confirmation questions, and opens no Quick View window, even with
+`-q`. Invalid settings still produce a nonzero exit status.
+
+The estimate is before reprojection and excludes attributes, indexes and storage
+overhead. It cannot predict which features will collapse or fail reprojection.
+Python's near-global projection-domain check still applies. For PLY, an existing
+input mesh path and valid CLI options are required, but the mesh is not loaded,
+ray casting is not performed, and output geometry/size are not estimated.
+
+### Optional generation records (`--metadata`)
+
+```sh
+mkgraticule --metadata -g 10 10 -m 30 30 -srs IAU_2015:30100 moon.gpkg
+```
+
+Off by default. With `--metadata`, GeoPackage and SpatiaLite contain a plain
+SQLite table named `mkgraticule_metadata` with `key` and `value` text columns.
+The record includes the tool version, implementation, UTC timestamp, original
+command arguments, output format, CRS, effective grid/resolution/extent/major
+settings, projection parameter overrides and endpoint de-duplication setting.
+The effective output CRS is also stored as `crs_wkt`, so a custom or file-based
+CRS can be recovered. Python and R use the same value format: scalars are plain
+text, numeric lists are space-separated, booleans are `true`/`false`, and an unset
+option is an empty string. `format` is, for example, `gpkg`, and `grid` is `10 10`.
+Only settings relevant to the output are included; 2D output has no PLY-specific
+settings or display/confirmation flags. Python additionally records its degree-mode
+reprojection switches. `no_duplicate_endpoint` is `false` for metre grids, where
+the switch has no effect.
+
+`override_lat_orig`, `override_lat_sp` and `override_lat_sp2` record explicit CLI
+overrides. Actual projection parameters, including CRS defaults, are recorded
+separately as `crs_parameter_<name>`. Names are lowercased WKT parameter names with
+non-alphanumeric characters removed: Lambert's first standard parallel is, for
+example, `crs_parameter_latitudeof1ststandardparallel`. Values use the units declared
+in `crs_wkt`. Command arguments are stored as shell-quoted text for reference.
+`mkgraticule_metadata` cannot be used as the grid layer name when recording is enabled.
+
+```sql
+SELECT key, value FROM mkgraticule_metadata ORDER BY key;
+```
+
+Python PLY records settings, including mesh path, ray origin, offsets and tube
+parameters, in `comment mkgraticule key=value` header lines (values are JSON-escaped
+text to keep comments on one line). PLY coordinates are
+in the input mesh coordinate system; no geographic output CRS is recorded.
+The mesh contents are not embedded, so keep the source mesh to reproduce the
+result. Command records include local paths supplied on the command line.
+
 After installation, the recommended command is:
 
 ```sh

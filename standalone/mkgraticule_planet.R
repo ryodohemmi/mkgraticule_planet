@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "1.2.1"
+VERSION <- "1.3.0"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
@@ -38,6 +38,10 @@ usage <- function(status = 0) {
     "      Show this help message and exit.\n",
     "  -v, --version\n",
     "      Show version and exit.\n",
+    "  --dry-run\n",
+    "      Validate and show the generation plan without writing files or asking for confirmation.\n",
+    "  --metadata\n",
+    "      Record generation settings in the mkgraticule_metadata table.\n",
     "  -srs, --srs SRS\n",
     "      Set target spatial reference (IAU code or *.prj file).\n",
     "      See https://spatialreference.org/\n",
@@ -119,6 +123,12 @@ parse_args <- function(args) {
 
     if (key %in% c("-v", "--version")) {
       show_version()
+    }
+
+    if (key %in% c("--dry-run", "--metadata")) {
+      res[[substring(key, 3)]] <- TRUE
+      i <- i + 1
+      next
     }
 
     if (key %in% c("-e", "--extent")) {
@@ -641,7 +651,7 @@ terminal_width <- function(default = 80L) {
       suppressWarnings(as.integer(system("tput cols 2>/dev/null", intern = TRUE)))
     }, error = function(e) NA_integer_)
   }
-  if (is.na(cols) || cols <= 0) {
+  if (length(cols) != 1L || is.na(cols) || cols <= 0) {
     cols <- suppressWarnings(as.integer(getOption("width", default)))
   }
   if (is.na(cols) || cols <= 0) cols <- default
@@ -1061,7 +1071,8 @@ estimate_grid <- function(is_meters, xmin, xmax, ymin, ymax, xstep, ystep, xres,
   } else {
     n_x <- count_samples(xmin, xmax, xstep)
     n_y <- count_samples(ymin, ymax, ystep)
-    if (nde && abs((xmax - xmin) - 360) < 1e-9 && n_x > 1) n_x <- n_x - 1
+    if (nde && abs((xmax - xmin) - 360) < 1e-9 && n_x > 1 &&
+        abs(xmin + (n_x - 1) * xstep - xmax) < 1e-9) n_x <- n_x - 1
     per_h <- count_samples(xmin, xmax, xres)
     per_v <- count_samples(ymin, ymax, yres)
   }
@@ -1186,6 +1197,7 @@ quick_view <- function(path, line_layer, point_layer = NULL) {
   invisible(NULL)
 }
 
+main <- function() {
 opts <- parse_args(args)
 
 proj_crs  <- get_optional(opts, "proj-crs", "IAU_2015:30100")
@@ -1202,6 +1214,9 @@ if (is.null(layer)) {
   point_layer <- "point"
 } else {
   point_layer <- paste0(layer, "_point")
+}
+if (isTRUE(opts[["metadata"]]) && identical(layer, "mkgraticule_metadata")) {
+  stop("Layer name 'mkgraticule_metadata' is reserved when --metadata is enabled.")
 }
 
 lat_min   <- to_num(get_optional(opts, "lat-min", "-90"),  "--lat-min / -e[4]")
@@ -1270,7 +1285,7 @@ if (is_meters) {
   if (lon_min >= lon_max) stop(sprintf("extent requires ulx < lrx (got ulx=%s, lrx=%s).", lon_min, lon_max))
   if (lat_max <= lat_min) stop(sprintf("extent requires uly > lry (got uly=%s, lry=%s).", lat_max, lat_min))
 }
-confirm_output_size(
+if (!isTRUE(opts[["dry-run"]])) confirm_output_size(
   is_meters, lon_min, lon_max, lat_min, lat_max, mer_step, par_step, vstep_lon, vstep_lat,
   isTRUE(get_optional(opts, "no-duplicate-endpoint", FALSE)),
   isTRUE(get_optional(opts, "yes", FALSE))
@@ -1280,14 +1295,86 @@ center <- if (projected) get_projection_center_lat_lon(crs_proj) else list(lat =
 if (projected && is.null(center$lon)) center$lon <- 0
 
 outdir <- dirname(output)
+if (isTRUE(opts[["dry-run"]])) {
+  est <- estimate_grid(is_meters, lon_min, lon_max, lat_min, lat_max,
+                       mer_step, par_step, vstep_lon, vstep_lat,
+                       isTRUE(opts[["no-duplicate-endpoint"]]))
+  if (est$lines == 0) stop("No grid line falls inside the extent.")
+  cat(sprintf("Dry run: %s\n", output))
+  cat(sprintf("Format: %s; units: %s\n", if (is_gpkg) "gpkg" else "spatialite", units))
+  show_wkt(crs_proj)
+  cat(sprintf("Extent (xmin ymax xmax ymin): %s\n", paste(c(lon_min, lat_max, lon_max, lat_min), collapse = " ")))
+  cat(sprintf("Grid: %s; resolution: %s; major: %s\n",
+              paste(c(mer_step, par_step), collapse = " "),
+              paste(c(vstep_lon, vstep_lat), collapse = " "),
+              paste(c(major_mer_step, major_par_step), collapse = " ")))
+  cat(sprintf("Estimated lines: %s; vertices: %s\n", est$lines, est$vertices))
+  cat(sprintf("Estimated geometry size: %s (approximate, before reprojection)\n", format_size(est$vertices * BYTES_PER_VERTEX)))
+  cat(sprintf("Metadata: %s\n", if (isTRUE(opts[["metadata"]])) "enabled" else "disabled"))
+  cat(if (file.exists(output)) "Existing output would be replaced.\n" else "A new output would be created.\n")
+  cat("No files were written.\n")
+  return(invisible(NULL))
+}
 if (!identical(outdir, ".") && nzchar(outdir)) {
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 }
-if (file.exists(output)) {
-  unlink(output)
-  if (file.exists(output)) {
-    stop(sprintf("Cannot overwrite '%s'. It may be open in QGIS.", output))
+final_output <- output
+staging <- tempfile(pattern = ".mkgraticule-", tmpdir = outdir)
+if (!dir.create(staging)) stop("Cannot create staging directory.")
+on.exit(unlink(staging, recursive = TRUE), add = TRUE)
+output <- file.path(staging, basename(final_output))
+
+finish_output <- function() {
+  saved <- st_read(output, layer = layer, quiet = TRUE)
+  empty <- sum(st_is_empty(saved))
+  if (nrow(saved) == empty) stop("No non-empty grid lines were saved; the existing output is unchanged.")
+  point_count <- if (point_layer %in% st_layers(output)$name) {
+    nrow(st_read(output, layer = point_layer, quiet = TRUE))
+  } else 0L
+  if (isTRUE(opts[["metadata"]])) {
+    record <- list(
+      version = VERSION, implementation = "R",
+      created_utc = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+      command = paste(shQuote(args), collapse = " "),
+      outfile = final_output, format = if (is_gpkg) "gpkg" else "spatialite",
+      srs = proj_crs, crs_wkt = crs_proj$wkt, units = units,
+      extent = c(lon_min, lat_max, lon_max, lat_min), grid = c(mer_step, par_step),
+      res = c(vstep_lon, vstep_lat), major = c(major_mer_step, major_par_step),
+      override_lat_orig = lat_orig, override_lat_sp = lat_sp, override_lat_sp2 = lat_sp2, layer = layer,
+      no_duplicate_endpoint = !is_meters && isTRUE(opts[["no-duplicate-endpoint"]])
+    )
+    params <- extract_wkt_parameters(crs_proj$wkt)
+    if (length(params) > 0L) {
+      record <- c(record, setNames(params, paste0("crs_parameter_", names(params))))
+    }
+    values <- vapply(record, function(x) {
+      if (is.logical(x)) return(paste(tolower(as.character(x)), collapse = " "))
+      if (is.numeric(x)) return(paste(sprintf("%.15g", x), collapse = " "))
+      paste(x, collapse = " ")
+    }, character(1))
+    con <- dbConnect(SQLite(), output)
+    tryCatch({
+      dbExecute(con, "CREATE TABLE mkgraticule_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+      dbAppendTable(con, "mkgraticule_metadata", data.frame(key = names(values), value = unname(values)))
+    }, finally = dbDisconnect(con))
   }
+  if (any(file.exists(paste0(final_output, c("-wal", "-shm", "-journal"))))) {
+    stop("Output has SQLite journal files; close applications using it before retrying.")
+  }
+  if (!file.rename(output, final_output)) {
+    stop(sprintf("Cannot replace '%s'; the existing output is unchanged. Close applications using it and retry.", final_output))
+  }
+  cat(sprintf("Output: %s\n", final_output))
+  if (is_meters) {
+    cat(sprintf("Saved Northing (y) lines: %d\n", sum(!is.na(saved$y))))
+    cat(sprintf("Saved Easting (x) lines: %d\n", sum(!is.na(saved$x))))
+  } else {
+    cat(sprintf("Saved latitude lines: %d\n", sum(!is.na(saved$lat))))
+    cat(sprintf("Saved longitude lines: %d\n", sum(!is.na(saved$lon))))
+  }
+  cat(sprintf("Saved line features: %d (empty: %d)\n", nrow(saved), empty))
+  cat(sprintf("Saved point features: %d\n", point_count))
+  if (qview) quick_view(final_output, layer, if (point_count > 0L) point_layer else NULL)
 }
 
 if (identical(units, "meters")) {
@@ -1371,12 +1458,8 @@ if (identical(units, "meters")) {
   }
 
   print_separator(term_width)
-  cat(sprintf("Output: %s\n", output))
-  cat(sprintf("Northing (y) lines: %d\n", length(ys)))
-  cat(sprintf("Easting (x) lines: %d\n", length(xs)))
-
-  if (qview) quick_view(output, layer)
-  quit(status = 0)
+  finish_output()
+  return(invisible(NULL))
 }
 
 meridians <- seq_inclusive(lon_min, lon_max, mer_step)
@@ -1569,9 +1652,7 @@ if (is_gpkg) {
   }
 }
 
-cat(sprintf("Output: %s\n", output))
-cat(sprintf("Lat grids: %d\n", length(parallels)))
-cat(sprintf("Lon grids: %2d\n", length(meridians)))
-cat(sprintf("Points: %d\n", point_count))
+finish_output()
+}
 
-if (qview) quick_view(output, layer, if (point_count > 0L) point_layer else NULL)
+main()

@@ -47,8 +47,10 @@ nav:
       - 3D PLY (Python only): ply.md
   - Reference:
       - CLI reference: cli-reference.md
+      - Python and R comparison: implementation-comparison.md
       - Output fields: output-fields.md
       - QGIS examples: qgis-examples.md
+      - Development and tests: development.md
   - Design notes:
       - Overview: design/notes.md
       - Comparison with QGIS and sf: design/comparison-with-qgis-and-sf.md
