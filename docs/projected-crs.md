@@ -40,6 +40,10 @@ mkgraticule ... -nde
 ## Planetary CRS
 
 The `-srs` option accepts any coordinate reference system supported by GDAL / PROJ.
+In both Python and R, this includes authority codes, custom PROJ strings, WKT
+strings, and paths to CRS definition files (`.wkt` or `.prj`). Quote paths that
+contain spaces, for example `-srs "CRS definitions/moon.wkt"`. These files contain
+CRS WKT, rather than geometry WKT such as `POINT(...)`.
 
 Planetary coordinate systems typically follow the **IAU 2015 cartographic coordinate system definitions**.
 Many IAU CRS definitions can be browsed at <https://spatialreference.org/>.

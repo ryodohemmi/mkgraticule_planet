@@ -81,7 +81,7 @@ class SharedCLI:
         self.assertEqual(self.assert_counts(output, log), (6, 0))
         with closing(sqlite3.connect(output)) as con:
             record = dict(con.execute("SELECT key, value FROM mkgraticule_metadata"))
-            self.assertEqual(record["version"], "1.3.1")
+            self.assertEqual(record["version"], "1.3.2")
             self.assertIn("Moon", record["crs_wkt"])
             self.assertEqual(record["format"], "gpkg")
             self.assertEqual(record["layer"], "grid")
@@ -156,6 +156,48 @@ class SharedCLI:
                 self.assertEqual(float(record["crs_parameter_" + name]), value)
             self.assertEqual(record["override_lat_orig"], "5" if overrides else "")
 
+    def test_custom_crs_and_wkt_file_inputs(self):
+        definition = "+proj=lcc +lat_0=0 +lat_1=20 +lat_2=60 +lon_0=0 +R=1737400 +units=m +no_defs"
+        target = osr.SpatialReference()
+        target.SetFromUserInput(definition)
+        wkt = target.ExportToWkt(["FORMAT=WKT2_2019", "MULTILINE=YES"])
+        cases = [("PROJ", definition, target), ("WKT2", wkt, target),
+                 ("WKT1", target.ExportToWkt(["FORMAT=WKT1_ESRI"]), target)]
+        for pairs in (1, 3):
+            quoted = wkt.replace('PROJCRS["', 'PROJCRS["' + 'quoted ""[name]"" ' * pairs, 1)
+            cases.append((f"WKT2 with {pairs} escaped quote pairs", quoted, target))
+        for suffix in (".wkt", ".prj"):
+            path = self.work / ("custom projection" + suffix)
+            path.write_text(wkt, encoding="utf-8")
+            cases.append((suffix, str(path), target))
+        planetary = osr.SpatialReference()
+        planetary.SetFromUserInput("IAU_2015:30175")
+        path = self.work / "moon lambert.wkt"
+        path.write_text(planetary.ExportToWkt(["FORMAT=WKT2_2019"]), encoding="utf-8")
+        cases.append(("IAU WKT file", str(path), planetary))
+        for index, (name, srs_input, reference) in enumerate(cases):
+            with self.subTest(input=name):
+                output = self.work / f"grid{index}.gpkg"
+                log = self.grid(output, "-srs", srs_input, "--metadata")
+                self.assertEqual(self.assert_counts(output, log), (6, 1))
+                ds = ogr.Open(str(output))
+                layer = ds.GetLayerByName("grid")
+                actual = layer.GetSpatialRef().Clone()
+                expected = reference.Clone()
+                actual.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+                expected.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+                self.assertTrue(actual.IsSame(expected))
+                geographic = expected.CloneGeogCS()
+                geographic.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+                x, y, _ = osr.CoordinateTransformation(geographic, expected).TransformPoint(0, 10)
+                feature = next(feature for feature in layer if feature.GetField("lat") == 10)
+                point = feature.GetGeometryRef().GetPoint(0)
+                self.assertAlmostEqual(point[0], x, places=4)
+                self.assertAlmostEqual(point[1], y, places=4)
+                ds = None
+                with closing(sqlite3.connect(output)) as con:
+                    self.assertEqual(con.execute("SELECT count(*) FROM gpkg_spatial_ref_sys WHERE srs_id IN (9001, 9122)").fetchone()[0], 0)
+
     def test_size_confirmation_does_not_create_directory(self):
         output = self.work / "nested" / "grid.gpkg"
         self.grid(output, "-r", 0.01, 0.01, success=False)
@@ -166,7 +208,7 @@ class SharedCLI:
         log = self.grid(output, "--metadata")
         self.assertEqual(self.assert_counts(output, log), (6, 0))
         with closing(sqlite3.connect(output)) as con:
-            self.assertEqual(con.execute("SELECT value FROM mkgraticule_metadata WHERE key='version'").fetchone()[0], "1.3.1")
+            self.assertEqual(con.execute("SELECT value FROM mkgraticule_metadata WHERE key='version'").fetchone()[0], "1.3.2")
 
     def test_format_override_default_extension(self):
         for name in ("grid", "grid.db"):
@@ -277,6 +319,45 @@ class RStandalone(SharedCLI, unittest.TestCase):
             self.assertFalse(list(self.work.glob(".mkgraticule-*")))
 
 
+@unittest.skipUnless(os.name == "nt", "Windows file sharing semantics")
+class WindowsOutputLocking(unittest.TestCase):
+    setUp = SharedCLI.setUp
+    run_cli = SharedCLI.run_cli
+    grid = SharedCLI.grid
+
+    def test_locked_output_is_preserved(self):
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_file = kernel32.CreateFileW
+        create_file.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        create_file.restype = wintypes.HANDLE
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = [wintypes.HANDLE]
+        close_handle.restype = wintypes.BOOL
+        commands = [PythonPackage.command, PythonStandalone.command]
+        if R_COMMAND:
+            commands.append(RStandalone.command)
+        for index, command in enumerate(commands):
+            with self.subTest(command=command):
+                self.command = command
+                output = self.work / f"locked{index}.gpkg"
+                self.grid(output)
+                before = output.read_bytes()
+                # Allow readers and writers but deny deletion/rename, as a GIS app can.
+                handle = create_file(str(output), 0x80000000, 0x3, None, 3, 0x80, None)
+                self.assertNotEqual(handle, ctypes.c_void_p(-1).value)
+                try:
+                    log = self.grid(output, success=False)
+                    self.assertIn("existing output is unchanged. Close applications using it", log)
+                    self.assertEqual(output.read_bytes(), before)
+                    self.assertFalse(list(self.work.glob(".mkgraticule-*")))
+                finally:
+                    close_handle(handle)
+
+
 class PythonSafety(unittest.TestCase):
     setUp = SharedCLI.setUp
     run_cli = SharedCLI.run_cli
@@ -357,7 +438,7 @@ class PLYTests:
             self.run_cli("-mesh", mesh, "-g", 90, 45, "-r", 30, 20, "-e", -180, 80, 180, -80,
                          "--metadata", *extra, output)
             header, body = output.read_text().split("end_header\n", 1)
-            self.assertIn("comment mkgraticule version=\"1.3.1\"", header)
+            self.assertIn("comment mkgraticule version=\"1.3.2\"", header)
             self.assertIn('comment mkgraticule grid="90 45"', header)
             for key in ("srs", "crs_wkt", "major", "layer", "qview", "yes", "dry_run"):
                 self.assertNotIn(f"comment mkgraticule {key}=", header)

@@ -30,7 +30,7 @@ python mkgraticule_planet.py -u meters -g 100000 100000 -e -500000 500000 500000
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -347,7 +347,7 @@ def get_args():
         "--srs",
         type=str,
         default="IAU_2015:30100",
-        help="Set target spatial reference (IAU code or *.prj file).\
+        help="Set target spatial reference (IAU/EPSG code, PROJ/WKT string, or .wkt/.prj file).\
             \nSee https://spatialreference.org/",
     )
     parser.add_argument(

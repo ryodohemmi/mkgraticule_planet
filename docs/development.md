@@ -18,6 +18,9 @@ failures, projection skips and standalone source parity. Shared Python/R PLY tes
 check edge/tube output, sampled surface points, offsets, batches and invalid options.
 R tests also simulate partial-write and replacement failures to verify that the
 original file survives and staging directories are removed.
+Custom PROJ, WKT1/WKT2 strings and WKT/PRJ files are checked for CRS and coordinate
+accuracy. On Windows, a real file lock verifies output preservation and the retry
+message for all three CLIs; this platform-specific test is skipped on Linux.
 
 R tests are skipped if `Rscript` is unavailable. To use R from a different conda
 environment, set `MKGRATICULE_R_COMMAND` to a JSON array of command arguments:
@@ -27,8 +30,11 @@ export MKGRATICULE_R_COMMAND='["conda", "run", "--no-capture-output", "-n", "rsf
 python -m unittest discover -s tests -v
 ```
 
-GitHub Actions runs the full suite on Linux on pushes and pull requests, with
-Python 3.11 and R in a conda-forge environment. CI requires R tests and sets
+GitHub Actions runs the full suite on Linux and Windows on pushes to `main` and pull requests,
+with Python 3.11, 3.12 and 3.13 and R in conda-forge environments (six combinations).
+The workflow matrix selects the Python versions; the environment file sets only
+the minimum version for local test environments.
+CI requires R tests and sets
 `MKGRATICULE_REQUIRE_PLY=1` to fail if Python PLY dependencies or Rvcg are unavailable, and checks
 the installed command entry points. The suite
 does not exercise interactive Quick View windows or every OS/GDAL combination.

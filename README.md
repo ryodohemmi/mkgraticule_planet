@@ -486,6 +486,7 @@ mkgraticule ... -nde
 ## Planetary CRS
 
 The `-srs` option accepts any coordinate reference system supported by GDAL / PROJ.
+Both Python and R accept IAU/EPSG codes, PROJ/WKT strings, and `.wkt` / `.prj` CRS definition files.
 
 Planetary coordinate systems typically follow the **IAU 2015 cartographic coordinate system definitions**.
 Many IAU CRS definitions can be browsed at:
