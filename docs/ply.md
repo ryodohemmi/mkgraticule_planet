@@ -1,6 +1,18 @@
-# 3D PLY fitted to an OBJ shape model (Python only)
+# 3D PLY fitted to an OBJ shape model
 
 PLY output ray-casts latitude/longitude samples onto the input mesh. It assumes the mesh is centered on `--ray-orig` / `-rorig` and uses `+X = lon 0`, `+Y = lon 90E`, and `+Z = north`.
+
+Both Python and R support fitted edge and tube PLY output, with the same CLI
+options and defaults. R uses the native Rvcg/VCGLIB ray intersector; it does not
+call Python. Rvcg is only required when generating PLY, not for 2D output or a
+PLY dry run. Input mesh formats are those supported by `Rvcg::vcgImport()`.
+
+```sh
+conda install -c conda-forge r-rvcg
+Rscript standalone/mkgraticule_planet.R -mesh shape.obj -g 10 10 -r 1 1 output.ply
+```
+
+Alternatively install Rvcg from R with `install.packages("Rvcg")`.
 
 The existing grid options are reused:
 
@@ -40,7 +52,21 @@ Install an Embree binding for the fast ray path; as of May 2026, `pip install em
                                  phobos_graticule_3d.ply
     ```
 
-`--tube-rad` / `-trad` writes a colored tube mesh instead of PLY edge primitives. PLY-specific command-line options are marked with `[PLY only]` in `--help`.
+=== "R / Rvcg (standalone)"
+
+    ```sh
+    Rscript standalone/mkgraticule_planet.R -f ply \
+                -mesh phobos_shape.obj \
+                -g 10 10 -r 1 1 -e 0 90 360 -90 \
+                -odist 0.005 -trad 0.001 \
+                phobos_graticule_3d.ply
+    ```
+
+R always uses the Rvcg accelerator; `--ray-slow` is accepted for command-line
+compatibility but has no effect in R. Geometry and ray-hit decisions can differ
+slightly between backends, particularly at mesh edges and tangencies.
+
+`--tube-rad` / `-trad` writes a colored tube mesh instead of PLY edge primitives. PLY-specific command-line options are grouped separately in `--help`.
 
 ## Phobos MeshLab render example
 

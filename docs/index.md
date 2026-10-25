@@ -1,6 +1,6 @@
 # mkgraticule_planet
 
-Create planetary-scale graticules with multi-format labels for any **GDAL/PROJ-supported CRS** — exported as **GeoPackage**, **SpatiaLite**, or Python-only fitted **3D PLY**.
+Create planetary-scale graticules with multi-format labels for any **GDAL/PROJ-supported CRS** — exported as **GeoPackage**, **SpatiaLite**, or fitted **3D PLY**.
 
 A small CLI utility for generating latitude/longitude grids for planetary bodies using **IAU 2015 planetary coordinate systems**.
 
@@ -9,7 +9,7 @@ Currently, two CLI implementations are available:
 * **Python / GDAL**: [`mkgraticule_planet.py`](https://github.com/ryodohemmi/mkgraticule_planet/blob/main/standalone/mkgraticule_planet.py)
 * **R / sf**: [`mkgraticule_planet.R`](https://github.com/ryodohemmi/mkgraticule_planet/blob/main/standalone/mkgraticule_planet.R)
 
-The fitted 3D PLY output for OBJ/mesh shape models is available in the Python implementation only.
+Both Python and R support fitted 3D PLY output for OBJ/mesh shape models. R uses the optional Rvcg package and does not require Python.
 
 See [Python and R comparison](implementation-comparison.md) for feature and
 default-value differences, and [output safety and generation records](usage.md#output-safety-and-generation-records)
@@ -30,11 +30,11 @@ See [Installation](installation.md) and [Usage](usage.md) for details.
     * QGIS-friendly output suitable for map production: label fields allow immediate graticule labeling, and CRS metadata ([`definition_12_063`](https://www.geopackage.org/spec/#gpkg_spatial_ref_sys_cols_crs_wkt)) ensures that IAU coordinate systems are correctly recognized when the GeoPackage is loaded in QGIS (GeoPackage only).
 * Generates degree-based latitude/longitude graticules even when the output CRS is a metre-based projected CRS
 * GeoPackage and SpatiaLite output
-* Python-only fitted 3D PLY output for OBJ/mesh shape models
+* Fitted 3D PLY (Python or R) output for OBJ/mesh shape models
 * Optional metre-based mode `-u/--units meters`: writes a planar easting/northing grid directly in a metre-based projected CRS (no reprojection) — see [Metre-based grids](metre-grids.md)
 * Quick View `-q/--qview`: opens a window showing the whole grid right after the file is written — see [Quick View](quick-view.md)
 * Compatible with **GDAL 3.x**
-* Two CLI implementations for 2D GIS output:
+* Two CLI implementations for GIS and fitted 3D output:
     * Python version for [GDAL](https://github.com/OSGeo/gdal)-centric workflows (conda-forge / standalone)
     * R version for [sf (Simple Features for R)](https://github.com/r-spatial/sf/)-centric workflows (standalone only)
 * Multiple graticule label styles

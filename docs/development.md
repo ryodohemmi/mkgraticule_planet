@@ -11,10 +11,11 @@ python -m unittest discover -s tests -v
 
 The suite runs the package CLI, standalone Python script and standalone R script
 against small temporary datasets. It checks GeoPackage/SpatiaLite output,
-CRS and labels, major/minor classification, endpoint de-duplication, polar point
+CRS and labels, shared defaults, major/minor classification, endpoint de-duplication, polar point
 layers, metre grids, saved counts, metadata opt-in, dry runs and preservation of
 existing output on failure. Python tests also cover partial write/replacement
-failures, projection skips, PLY edge/tube output and standalone source parity.
+failures, projection skips and standalone source parity. Shared Python/R PLY tests
+check edge/tube output, sampled surface points, offsets, batches and invalid options.
 R tests also simulate partial-write and replacement failures to verify that the
 original file survives and staging directories are removed.
 
@@ -28,7 +29,7 @@ python -m unittest discover -s tests -v
 
 GitHub Actions runs the full suite on Linux on pushes and pull requests, with
 Python 3.11 and R in a conda-forge environment. CI requires R tests and sets
-`MKGRATICULE_REQUIRE_PLY=1` to fail if PLY dependencies are unavailable, and checks
+`MKGRATICULE_REQUIRE_PLY=1` to fail if Python PLY dependencies or Rvcg are unavailable, and checks
 the installed command entry points. The suite
 does not exercise interactive Quick View windows or every OS/GDAL combination.
 

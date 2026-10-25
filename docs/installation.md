@@ -104,3 +104,15 @@ pip install -e .
 ```
 
 For a compact summary of conda download size and post-install environment size for both implementations, see [Conda environment size](setup/conda-env-size-summary-2026-03-17.md).
+
+## R PLY output
+
+The standalone R script supports PLY output using Rvcg, without a Python runtime.
+Install Rvcg in the same R environment:
+
+```sh
+conda install -c conda-forge r-rvcg
+```
+
+Or run `install.packages("Rvcg")` in R. Rvcg is optional for 2D GIS output and is
+not loaded during `--dry-run`. See [3D PLY](ply.md) for examples.

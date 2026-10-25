@@ -44,7 +44,7 @@ nav:
       - Metre-based grids (-u meters): metre-grids.md
       - Quick View (-q): quick-view.md
       - Projected CRS and planetary CRS: projected-crs.md
-      - 3D PLY (Python only): ply.md
+      - 3D PLY: ply.md
   - Reference:
       - CLI reference: cli-reference.md
       - Python and R comparison: implementation-comparison.md

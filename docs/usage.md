@@ -55,7 +55,7 @@ CRS can be recovered. Python and R use the same value format: scalars are plain
 text, numeric lists are space-separated, booleans are `true`/`false`, and an unset
 option is an empty string. `format` is, for example, `gpkg`, and `grid` is `10 10`.
 Only settings relevant to the output are included; 2D output has no PLY-specific
-settings or display/confirmation flags. Python additionally records its degree-mode
+settings or display/confirmation flags. Both implementations record their degree-mode
 reprojection switches. `no_duplicate_endpoint` is `false` for metre grids, where
 the switch has no effect.
 
@@ -71,7 +71,7 @@ in `crs_wkt`. Command arguments are stored as shell-quoted text for reference.
 SELECT key, value FROM mkgraticule_metadata ORDER BY key;
 ```
 
-Python PLY records settings, including mesh path, ray origin, offsets and tube
+PLY output from both implementations records settings, including mesh path, ray origin, offsets and tube
 parameters, in `comment mkgraticule key=value` header lines (values are JSON-escaped
 text to keep comments on one line). PLY coordinates are
 in the input mesh coordinate system; no geographic output CRS is recorded.
@@ -106,7 +106,7 @@ The output format is auto-detected from the file extension:
 | --------- | ------ |
 | `.gpkg` (default) | GeoPackage |
 | `.sqlite` / `.sqlite3` / `.spatialite` | SpatiaLite |
-| `.ply` | Python-only fitted 3D PLY |
+| `.ply` | Fitted 3D PLY (Python or R) |
 
 To override auto-detection, use `-f/--format`:
 

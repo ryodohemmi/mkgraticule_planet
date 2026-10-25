@@ -2,6 +2,7 @@
 from contextlib import closing
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -26,7 +27,7 @@ if os.environ.get("MKGRATICULE_REQUIRE_PLY") == "1" and not PLY_AVAILABLE:
 
 class SharedCLI:
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix=".test-grid-", dir=ROOT)
+        self.temp = tempfile.TemporaryDirectory(prefix="mkgraticule-test-")
         self.addCleanup(self.temp.cleanup)
         self.work = Path(self.temp.name)
 
@@ -80,7 +81,7 @@ class SharedCLI:
         self.assertEqual(self.assert_counts(output, log), (6, 0))
         with closing(sqlite3.connect(output)) as con:
             record = dict(con.execute("SELECT key, value FROM mkgraticule_metadata"))
-            self.assertEqual(record["version"], "1.3.0")
+            self.assertEqual(record["version"], "1.3.1")
             self.assertIn("Moon", record["crs_wkt"])
             self.assertEqual(record["format"], "gpkg")
             self.assertEqual(record["layer"], "grid")
@@ -93,6 +94,53 @@ class SharedCLI:
             for key in ("grid", "res", "extent", "command", "created_utc"):
                 self.assertTrue(record[key])
         self.assertFalse(list(self.work.glob(".mkgraticule-*")))
+
+    def test_shared_default_settings(self):
+        for units, options, extent, grid, resolution, srs in (
+            ("degrees", (), (0, 1, 1, 0), "5 5", "0.1 0.1", "IAU_2015:30100"),
+            ("meters", ("-u", "meters", "-srs", "IAU_2015:30135"),
+             (0, 1000, 1000, 0), "5000 5000", "100 100", "IAU_2015:30135"),
+        ):
+            with self.subTest(units=units):
+                output = self.work / units
+                log = self.run_cli("--metadata", "-e", *extent, *options, output)
+                saved = output.with_suffix(".gpkg")
+                self.assertEqual(self.assert_counts(saved, log, meters=units == "meters"), (2, 0))
+                with closing(sqlite3.connect(saved)) as con:
+                    record = dict(con.execute("SELECT key, value FROM mkgraticule_metadata"))
+                for key, expected in {"grid": grid, "res": resolution, "srs": srs,
+                                      "units": units, "format": "gpkg", "layer": "grid",
+                                      "major": "", "override_lat_orig": "", "override_lat_sp": "",
+                                      "override_lat_sp2": "", "no_duplicate_endpoint": "false"}.items():
+                    self.assertEqual(record[key], expected, key)
+                ds = ogr.Open(str(saved))
+                for feature in ds.GetLayerByName("grid"):
+                    self.assertEqual(feature.GetGeometryRef().GetPointCount(), 11)
+                ds = None
+
+    def test_reprojection_controls(self):
+        output = self.work / "projected.gpkg"
+        output.write_bytes(b"original")
+        options = ("-srs", "IAU_2015:30165", "-g", 60, 40, "-r", 10, 10,
+                   "-e", -180, 80, 180, -80)
+        self.run_cli(*options, output, success=False)
+        self.assertEqual(output.read_bytes(), b"original")
+        nonempty_counts = []
+        for flags in (("-s",), ("-s", "-p")):
+            log = self.run_cli(*options, *flags, "--metadata", output)
+            self.assert_counts(output, log)
+            ds = ogr.Open(str(output))
+            nonempty = sum(feature.GetGeometryRef() is not None and not feature.GetGeometryRef().IsEmpty()
+                           for feature in ds.GetLayerByName("grid"))
+            nonempty_counts.append(nonempty)
+            self.assertGreater(nonempty, 0)
+            self.assertLess(nonempty, 12)
+            ds = None
+            with closing(sqlite3.connect(output)) as con:
+                record = dict(con.execute("SELECT key, value FROM mkgraticule_metadata"))
+            self.assertEqual(record["skipfailures"], "true")
+            self.assertEqual(record["partial_reprojection"], "true" if "-p" in flags else "false")
+        self.assertGreater(nonempty_counts[1], nonempty_counts[0])
 
     def test_metadata_effective_projection_parameters(self):
         output = self.work / "grid.gpkg"
@@ -118,7 +166,15 @@ class SharedCLI:
         log = self.grid(output, "--metadata")
         self.assertEqual(self.assert_counts(output, log), (6, 0))
         with closing(sqlite3.connect(output)) as con:
-            self.assertEqual(con.execute("SELECT value FROM mkgraticule_metadata WHERE key='version'").fetchone()[0], "1.3.0")
+            self.assertEqual(con.execute("SELECT value FROM mkgraticule_metadata WHERE key='version'").fetchone()[0], "1.3.1")
+
+    def test_format_override_default_extension(self):
+        for name in ("grid", "grid.db"):
+            output = self.work / name
+            log = self.grid(output, "-f", "spatialite")
+            saved = Path(str(output) + ".spatialite")
+            self.assertFalse(output.exists())
+            self.assertEqual(self.assert_counts(saved, log), (6, 0))
 
     def test_invalid_crs_preserves_existing_output(self):
         output = self.work / "grid.gpkg"
@@ -282,11 +338,9 @@ class PythonSafety(unittest.TestCase):
             self.assertEqual(list(Path(directory).iterdir()), [output])
 
 
-@unittest.skipUnless(PLY_AVAILABLE, "PLY dependencies not installed")
-class PythonPLY(unittest.TestCase):
+class PLYTests:
     setUp = SharedCLI.setUp
     run_cli = SharedCLI.run_cli
-    command = PythonPackage.command
 
     def make_mesh(self):
         mesh = self.work / "octahedron.obj"
@@ -303,7 +357,7 @@ class PythonPLY(unittest.TestCase):
             self.run_cli("-mesh", mesh, "-g", 90, 45, "-r", 30, 20, "-e", -180, 80, 180, -80,
                          "--metadata", *extra, output)
             header, body = output.read_text().split("end_header\n", 1)
-            self.assertIn("comment mkgraticule version=\"1.3.0\"", header)
+            self.assertIn("comment mkgraticule version=\"1.3.1\"", header)
             self.assertIn('comment mkgraticule grid="90 45"', header)
             for key in ("srs", "crs_wkt", "major", "layer", "qview", "yes", "dry_run"):
                 self.assertNotIn(f"comment mkgraticule {key}=", header)
@@ -321,6 +375,104 @@ class PythonPLY(unittest.TestCase):
         self.assertEqual(output.read_bytes(), b"original")
         self.run_cli("-mesh", mesh, output, success=False)
         self.assertEqual(output.read_bytes(), b"original")
+
+    def test_ply_surface_offsets_and_batches(self):
+        mesh = self.make_mesh()
+        output = self.work / "grid.ply"
+        for options, offset in (((), 0), (("-odist", "0.1"), 0.1), (("-ofrac", "0.1"), 0.1)):
+            self.run_cli("-mesh", mesh, "-g", 90, 45, "-r", 30, 20, "-e", -180, 80, 180, -80,
+                         "-rbatch", 7, *options, output)
+            header, body = output.read_text().split("end_header\n", 1)
+            count = int(next(line.split()[2] for line in header.splitlines() if line.startswith("element vertex ")))
+            for row in body.splitlines()[:count]:
+                point = [float(value) for value in row.split()[:3]]
+                radius = sum(value * value for value in point) ** 0.5
+                original = [value * (radius - offset) / radius for value in point]
+                self.assertAlmostEqual(sum(abs(value) for value in original), 1, places=5)
+            self.assertNotIn("comment mkgraticule", header)
+
+    def test_ply_option_validation_and_no_writes(self):
+        mesh = self.make_mesh()
+        output = self.work / "grid.ply"
+        output.write_bytes(b"original")
+        for flags in (("-odist", 0, "-ofrac", 0), ("-tseg", 2), ("-rbatch", 0),
+                      ("-prgb", "256,0,0"), ("-rscale", 0), ("-trad", -1), ("-u", "meters")):
+            self.run_cli("--dry-run", "-mesh", mesh, *flags, output, success=False)
+            self.assertEqual(output.read_bytes(), b"original")
+
+    def test_ply_shifted_origin_and_default_extension(self):
+        mesh = self.make_mesh()
+        origin = (1.2, -0.4, 0.7)
+        lines = []
+        for line in mesh.read_text().splitlines():
+            if line.startswith("v "):
+                point = [float(value) + shift for value, shift in zip(line.split()[1:], origin)]
+                line = "v " + " ".join(map(str, point))
+            lines.append(line)
+        mesh.write_text("\n".join(lines) + "\n")
+        output = self.work / "grid"
+        self.run_cli("--format", "ply", "--input-mesh", mesh, "--ray-orig", *origin,
+                     "-g", 90, 45, "-r", 30, 20, "-e", -180, 80, 180, -80, output)
+        saved = Path(str(output) + ".ply")
+        self.assertFalse(output.exists())
+        header, body = saved.read_text().split("end_header\n", 1)
+        count = int(next(line.split()[2] for line in header.splitlines() if line.startswith("element vertex ")))
+        for row in body.splitlines()[:count]:
+            point = [float(value) - shift for value, shift in zip(row.split()[:3], origin)]
+            self.assertAlmostEqual(sum(abs(value) for value in point), 1, places=5)
+
+    def test_ply_closed_lines_endpoint_and_tube_topology(self):
+        mesh = self.make_mesh()
+        output = self.work / "grid.ply"
+        for tube in (False, True):
+            for nde in (False, True):
+                with self.subTest(tube=tube, nde=nde):
+                    flags = (["-trad", "0.01"] if tube else []) + (["-nde"] if nde else [])
+                    self.run_cli("-mesh", mesh, "-g", 90, 22, "-r", 37, 11, "-e", 17, 57, 377, 13,
+                                 "-prgb", "40,50,60", *flags, output)
+                    header, body = output.read_text().split("end_header\n", 1)
+                    n = int(next(line.split()[2] for line in header.splitlines() if line.startswith("element vertex ")))
+                    rows = [row.split() for row in body.splitlines()]
+                    vertices = [tuple(map(float, row[:3])) for row in rows[:n]]
+                    self.assertTrue(all(math.isfinite(value) for vertex in vertices for value in vertex))
+                    self.assertEqual(n, (408 if nde else 450) if tube else (50 if nde else 55))
+                    elements = []
+                    for row in rows[n:]:
+                        ids = tuple(map(int, row[1:4] if tube else row[:2]))
+                        self.assertTrue(all(0 <= index < n for index in ids))
+                        self.assertEqual(len(set(ids)), len(ids))
+                        elements.append(ids)
+                        if not tube:
+                            self.assertEqual(list(map(int, row[2:])), [40, 50, 60])
+                    if tube:
+                        edge_use = {}
+                        for a, b, c in elements:
+                            for edge in ((a, b), (b, c), (c, a)):
+                                key = tuple(sorted(edge))
+                                edge_use[key] = edge_use.get(key, 0) + 1
+                        self.assertTrue(all(count == 2 for count in edge_use.values()), "Tube surfaces must be closed, including end caps")
+                        self.assertTrue(all(list(map(int, row[3:])) == [40, 50, 60] for row in rows[:n]))
+                    else:
+                        self.assertIn((9, 0), elements, "Full-360 latitude lines must close")
+
+
+@unittest.skipUnless(PLY_AVAILABLE, "PLY dependencies not installed")
+class PythonPLY(PLYTests, unittest.TestCase):
+    command = PythonPackage.command
+
+
+@unittest.skipUnless(R_COMMAND, "Rscript not found")
+class RPLY(PLYTests, unittest.TestCase):
+    command = (R_COMMAND or []) + [str(ROOT / "standalone/mkgraticule_planet.R")]
+
+    @classmethod
+    def setUpClass(cls):
+        result = subprocess.run(R_COMMAND + ["-e", "quit(status=if (requireNamespace('Rvcg', quietly=TRUE)) 0 else 1)"],
+                                capture_output=True, timeout=60)
+        if result.returncode:
+            if os.environ.get("MKGRATICULE_REQUIRE_PLY") == "1":
+                raise RuntimeError("CI requires Rvcg; R PLY tests must not be skipped.")
+            raise unittest.SkipTest("Rvcg is not installed")
 
 
 if __name__ == "__main__":

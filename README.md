@@ -1,41 +1,30 @@
 # mkgraticule_planet
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/mkgraticule-planet?label=conda-forge)](https://anaconda.org/conda-forge/mkgraticule-planet)  
-Create planetary-scale graticules with multi-format labels for any **GDAL/PROJ-supported CRS** — exported as **GeoPackage**, **SpatiaLite**, or Python-only fitted **3D PLY**.
+Create planetary-scale graticules with multi-format labels for any **GDAL/PROJ-supported CRS** — exported as **GeoPackage**, **SpatiaLite**, or fitted **3D PLY**.
 
 A small CLI utility for generating latitude/longitude grids for planetary bodies using **IAU 2015 planetary coordinate systems**.
 
-Currently, two CLI implementations are available:
+## Quick start (conda-forge, recommended)
 
-* **Python / GDAL**: [`mkgraticule_planet.py`](/standalone/mkgraticule_planet.py)
-* **R / sf**: [`mkgraticule_planet.R`](/standalone/mkgraticule_planet.R)
+Install the Python CLI from conda-forge and generate a Moon graticule:
 
-The fitted 3D PLY output for OBJ/mesh shape models is available in the Python implementation only.
+```sh
+conda install -c conda-forge mkgraticule-planet
+mkgraticule -g 10 10 -srs IAU_2015:30100 moon_graticule.gpkg
+```
 
-### Python and R feature comparison
-
-| Feature | Python / GDAL | R / sf |
-| ------- | ------------- | ------ |
-| GeoPackage / SpatiaLite, degree / metre grids | Yes | Yes |
-| Labels, major/minor grids, 360° endpoint de-duplication | Yes | Yes |
-| Projection parameter overrides and companion point layer | Yes | Yes |
-| Quick View | Optional matplotlib | Base R graphics |
-| `--dry-run`, `--metadata`, failed-output protection | Yes | Yes |
-| `-s` skip failures / `-p` partial reprojection | Yes | No CLI switches; uses sf transformation behaviour |
-| Fitted 3D PLY | Yes | No |
-| Degree-mode default `-g` | `5 5` | Required |
-| Degree-mode default `-r` | `0.1 0.1` | `0.5 0.1` |
-| Metre-mode default `-g` / `-r` | `5000 5000` / `100 100` | Same |
-| Distribution | conda-forge package / standalone | Standalone |
-
-See the [CLI reference](docs/cli-reference.md) for option details and
-[development guide](docs/development.md) for the shared Python/R tests and GitHub Actions CI.
+Standalone Python and R scripts are also available for environments with the
+required runtime libraries already installed, including setups without conda.
+See [Installation](#installation) for environment setup and standalone usage.
 
 Full documentation: https://mkgraticule-planet.readthedocs.io/
 
 ## Table of Contents
 
+- [Quick start (conda-forge, recommended)](#quick-start-conda-forge-recommended)
 - [Features](#features)
 - [Installation](#installation)
+- [Python and R implementations](#python-and-r-implementations)
 - [Design notes](#design-notes)
   - [Degree-based graticules in projected CRSs](#degree-based-graticules-in-projected-crss)
   - [Comparison with QGIS and sf](#comparison-with-qgis-and-sf)
@@ -48,7 +37,7 @@ Full documentation: https://mkgraticule-planet.readthedocs.io/
 - [Planetary CRS](#planetary-crs)
 - [QGIS examples](#qgis-examples)
 - [Output fields](#output-fields)
-- [3D PLY fitted to an OBJ shape model (Python only)](#3d-ply-fitted-to-an-obj-shape-model-python-only)
+- [3D PLY fitted to an OBJ shape model](#3d-ply-fitted-to-an-obj-shape-model)
 - [Acknowledgement](#acknowledgement)
 - [Citation](#citation)
 - [License](#license)
@@ -59,11 +48,11 @@ Full documentation: https://mkgraticule-planet.readthedocs.io/
   * QGIS-friendly output suitable for map production: label fields allow immediate graticule labeling, and CRS metadata ([`definition_12_063`](https://www.geopackage.org/spec/#gpkg_spatial_ref_sys_cols_crs_wkt)) ensures that IAU coordinate systems are correctly recognized when the GeoPackage is loaded in QGIS (GeoPackage only).
 * Generates degree-based latitude/longitude graticules even when the output CRS is a metre-based projected CRS
 * GeoPackage and SpatiaLite output
-* Python-only fitted 3D PLY output for OBJ/mesh shape models
+* Fitted 3D PLY (Python or R) output for OBJ/mesh shape models
 * Optional metre-based mode `-u/--units meters`: writes a planar easting/northing grid directly in a metre-based projected CRS (no reprojection)
 * Quick View `-q/--qview`: opens a window showing the whole grid right after the file is written
 * Compatible with **GDAL 3.x**
-* Two CLI implementations for 2D GIS output:
+* Two CLI implementations for GIS and fitted 3D output:
   * Python version for [GDAL](https://github.com/OSGeo/gdal)-centric workflows (conda-forge / standalone)
   * R version for [sf (Simple Features for R)](https://github.com/r-spatial/sf/)-centric workflows (standalone only)
 * Multiple graticule label styles
@@ -198,6 +187,18 @@ pip install -e .
 
 For a compact summary of conda download size and post-install environment size for both implementations, see [docs/setup/conda-env-size-summary-2026-03-17.md](docs/setup/conda-env-size-summary-2026-03-17.md).
 
+## Python and R implementations
+
+Two CLI implementations are available:
+
+* **Python / GDAL**: the conda-forge package (recommended), or [`mkgraticule_planet.py`](/standalone/mkgraticule_planet.py) for standalone use
+* **R / sf**: [`mkgraticule_planet.R`](/standalone/mkgraticule_planet.R) for standalone use
+
+Both Python and R support fitted 3D PLY output for OBJ/mesh shape models. R uses the optional Rvcg package and does not require Python.
+
+For feature differences and default values, see the
+[Python and R comparison on Read the Docs](https://mkgraticule-planet.readthedocs.io/en/latest/implementation-comparison/).
+
 ## Design notes
 
 ### Degree-based graticules in projected CRSs
@@ -250,7 +251,7 @@ mkgraticule --metadata -g 10 10 -srs IAU_2015:30100 moon.gpkg
 
 Both options are also available in the standalone Python and R scripts. Metadata
 recording is off by default. With `--metadata`, GeoPackage and SpatiaLite store a
-`mkgraticule_metadata` key/value table; Python PLY stores header comments.
+`mkgraticule_metadata` key/value table; PLY stores header comments.
 See [output safety and generation records](docs/usage.md#output-safety-and-generation-records).
 
 Existing output files are still replaced automatically, including all their layers.
@@ -287,7 +288,7 @@ The output format is auto-detected from the file extension:
 | --------- | ------ |
 | `.gpkg` (default) | GeoPackage |
 | `.sqlite` / `.sqlite3` / `.spatialite` | SpatiaLite |
-| `.ply` | Python-only fitted 3D PLY |
+| `.ply` | Fitted 3D PLY (Python or R) |
 
 To override auto-detection, use `-f/--format`:
 
@@ -423,7 +424,7 @@ Rscript mkgraticule_planet.R -u meters \
 
 Keep `-r` within `0.1 <= res <= step/2` degrees (`10 <= res <= step/2` metres with `-u meters`) for each axis. If `-r` is below the lower bound, or the estimated output exceeds 100 MB, the command prints a warning with the estimated output size and asks `Continue? [y/N]`. Only `y`/`yes` continues; `n`/`no` stops without writing anything (exit status 1) and leaves an existing output file untouched. If `-r` is above `step/2`, only a note is printed.
 
-- The defaults are `-g 5 5` / `-r 0.1 0.1` in degrees (R: `-r 0.5 0.1`, `-g` required) and `-g 5000 5000` / `-r 100 100` with `-u meters`.
+- Both Python and R default to `-g 5 5` / `-r 0.1 0.1` in degrees and `-g 5000 5000` / `-r 100 100` with `-u meters`.
 - When standard input is not a terminal (scripts, CI), the command stops instead of asking. Pass `-y/--yes` to continue without asking.
 - The estimate is approximate and counts geometry only (about 16 bytes per vertex).
 - PLY output is not checked.
@@ -597,7 +598,12 @@ mkgraticule -srs ESRI:54009 \
 | lon_360w   | longitude label (0° … 360°W) |
 | point_role | point role: `collapsed` or `center` |
 
-## 3D PLY fitted to an OBJ shape model (Python only)
+## 3D PLY fitted to an OBJ shape model
+
+Both implementations support these options. For R, install `Rvcg` and run
+`Rscript standalone/mkgraticule_planet.R` with the same grid and PLY options.
+See the [3D PLY guide](https://mkgraticule-planet.readthedocs.io/en/latest/ply/)
+for R setup, examples and backend details.
 
 PLY output ray-casts latitude/longitude samples onto the input mesh. It assumes the mesh is centered on `--ray-orig` / `-rorig` and uses `+X = lon 0`, `+Y = lon 90E`, and `+Z = north`.
 
@@ -634,7 +640,7 @@ python mkgraticule_planet.py -f ply \
                              phobos_graticule_3d.ply
 ```
 
-`--tube-rad` / `-trad` writes a colored tube mesh instead of PLY edge primitives. PLY-specific command-line options are marked with `[PLY only]` in `--help`.
+`--tube-rad` / `-trad` writes a colored tube mesh instead of PLY edge primitives. PLY-specific command-line options are grouped separately in `--help`.
 
 ### Phobos MeshLab render example
 

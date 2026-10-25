@@ -13,3 +13,4 @@ dependencies:
   - r-sf
   - r-dbi
   - r-rsqlite
+  - r-rvcg
