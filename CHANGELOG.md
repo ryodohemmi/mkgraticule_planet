@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.1] - 2026-10-25
+
+### Added
+- Implemented `-s/--skipfailures`, `-p/--partial-reprojection` and the near-global limited-domain guard in R.
+- Added native R fitted 3D PLY output using optional Rvcg, including edge/tube output, ray origins, offsets, colours, batches, dry runs, metadata and failed-output protection. Python is not required by the R implementation.
+
+### Changed
+- Align shared R CLI defaults with Python: degree-mode `-g` now defaults to `5 5`, and `-r` defaults to `0.1 0.1` instead of `0.5 0.1`. Metre-mode defaults remain `5000 5000` / `100 100`. To retain the previous R sampling spacing, pass `-r 0.5 0.1` explicitly.
+- Match Python's default output-extension handling when the supplied filename has an unrecognized suffix.
+- Lead the README with conda-forge installation and a quick-start example, and link to the detailed Python/R comparison on Read the Docs.
+- Document the implemented Python/R features and backend differences, with shared output and option tests.
+
 ## [1.3.0] - 2026-10-25
 
 ### Added

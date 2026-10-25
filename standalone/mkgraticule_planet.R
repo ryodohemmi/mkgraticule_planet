@@ -6,14 +6,14 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "1.3.0"
+VERSION <- "1.3.1"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
   cat(paste0(
     "mkgraticule_planet.R\n",
     "Create planetary-scale graticules with multi-format labels for any GDAL/PROJ-supported CRS\n",
-    "— exported as GeoPackage or SpatiaLite.\n\n",
+    "— exported as GeoPackage, SpatiaLite, or fitted 3D PLY.\n\n",
     "Repository: https://github.com/ryodohemmi/mkgraticule_planet\n",
     "Citation:   Hemmi, R. (2026). mkgraticule_planet. Zenodo.\n",
     "            https://doi.org/10.5281/zenodo.18864189\n\n",
@@ -29,9 +29,9 @@ usage <- function(status = 0) {
     "      Set the output filename\n",
     "      If no file extension is given, .gpkg is appended automatically.\n",
     "  -f, --format FORMAT\n",
-    "      Output format: 'gpkg' (GeoPackage) or 'spatialite' (SpatiaLite SQLite).\n",
+    "      Output format: 'gpkg', 'spatialite', or 'ply' (requires Rvcg).\n",
     "      Auto-detected from outfile extension if omitted:\n",
-    "        .gpkg -> gpkg, .sqlite -> spatialite.\n",
+    "        .gpkg -> gpkg, .sqlite -> spatialite, .ply -> ply.\n",
     "      Defaults to gpkg if extension is ambiguous.\n",
     "Options:\n",
     "  -h, --help\n",
@@ -41,7 +41,7 @@ usage <- function(status = 0) {
     "  --dry-run\n",
     "      Validate and show the generation plan without writing files or asking for confirmation.\n",
     "  --metadata\n",
-    "      Record generation settings in the mkgraticule_metadata table.\n",
+    "      Record generation settings in a SQLite table or PLY comments.\n",
     "  -srs, --srs SRS\n",
     "      Set target spatial reference (IAU code or *.prj file).\n",
     "      See https://spatialreference.org/\n",
@@ -53,12 +53,12 @@ usage <- function(status = 0) {
     "      With -u meters, the extent is given in projected CRS meters and is required.\n",
     "      Legacy aliases: --lon-min --lat-max --lon-max --lat-min\n",
     "  -g, --grid xstep ystep\n",
-    "      Set grid size [xstep ystep] in degrees (required)\n",
+    "      Set grid size [xstep ystep] in degrees (default: 5 5)\n",
     "      With -u meters, the value is in meters and the default is 5000 5000.\n",
     "      xstep = meridian interval, ystep = parallel interval\n",
     "      Legacy aliases: --meridian-step --parallel-step\n",
     "  -r, --res xres yres\n",
-    "      Set resolution to polygonize grids [xres yres] in degrees (default: 0.5 0.1)\n",
+    "      Set resolution to polygonize grids [xres yres] in degrees (default: 0.1 0.1)\n",
     "      xres = longitude sampling for parallels\n",
     "      yres = latitude sampling for meridians\n",
     "      With -u meters, the value is in meters and the default is 100 100.\n",
@@ -79,6 +79,10 @@ usage <- function(status = 0) {
     "  -q, --qview\n",
     "      Quick View: after writing the output, open a window showing the whole grid\n",
     "      (close the window to finish).\n",
+    "  -s, --skipfailures\n",
+    "      Skip features that fail reprojection.\n",
+    "  -p, --partial-reprojection\n",
+    "      Allow partial reprojection near projection-domain limits.\n",
     "  -nde, --no-duplicate-endpoint\n",
     "      Drop the duplicate endpoint meridian when the longitude span is ~360 degrees\n",
     "      (e.g., keep -180 and drop 180, or keep 0 and drop 360).\n",
@@ -91,7 +95,18 @@ usage <- function(status = 0) {
     "      Overwrite standard parallel in the target projected CRS.\n",
     "      For 2SP projections, this overwrites the 1st standard parallel (degrees).\n",
     "  -ls2, --lat-sp2 VALUE\n",
-    "      Overwrite the 2nd standard parallel in the target projected CRS (degrees).\n"
+    "      Overwrite the 2nd standard parallel in the target projected CRS (degrees).\n",
+    "PLY options (requires Rvcg only when generating PLY):\n",
+    "  -mesh, --input-mesh FILE       Input OBJ/mesh shape model (required for PLY).\n",
+    "  -rorig, --ray-orig X Y Z       Ray origin (default: 0 0 0).\n",
+    "  -rscale, --ray-scale VALUE     Ray start distance / mesh radius (default: 3).\n",
+    "  -odist, --offset-distance VAL  Outward offset (default: 0).\n",
+    "  -ofrac, --offset-fraction VAL  Offset / mesh radius (default: 0; exclusive with -odist).\n",
+    "  -rbatch, --ray-batch N         Ray batch size (default: 200000).\n",
+    "  -rslow, --ray-slow             Compatibility flag; Rvcg always uses its native accelerator.\n",
+    "  -prgb, --ply-rgb R,G,B         Colour (default: 255,255,255).\n",
+    "  -trad, --tube-rad VALUE        Tube radius; 0 writes edges (default: 0).\n",
+    "  -tseg, --tube-seg N            Tube radial segments (default: 8).\n"
   ))
   quit(status = status)
 }
@@ -128,6 +143,31 @@ parse_args <- function(args) {
     if (key %in% c("--dry-run", "--metadata")) {
       res[[substring(key, 3)]] <- TRUE
       i <- i + 1
+      next
+    }
+
+    flags <- c("-s" = "skipfailures", "--skipfailures" = "skipfailures",
+               "-p" = "partial-reprojection", "--partial-reprojection" = "partial-reprojection",
+               "-rslow" = "ray-slow", "--ray-slow" = "ray-slow", "--allow-slow-raycast" = "ray-slow")
+    if (key %in% names(flags)) {
+      res[[flags[[key]]]] <- TRUE
+      i <- i + 1
+      next
+    }
+    ply_options <- c("-mesh" = "input-mesh", "--input-mesh" = "input-mesh", "--mesh" = "input-mesh",
+                     "-rorig" = "origin", "--ray-orig" = "origin", "--origin" = "origin",
+                     "-rscale" = "far-scale", "--ray-scale" = "far-scale", "--far-scale" = "far-scale",
+                     "-odist" = "offset-distance", "--offset-distance" = "offset-distance",
+                     "-ofrac" = "offset-fraction", "-ofract" = "offset-fraction", "--offset-fraction" = "offset-fraction",
+                     "-rbatch" = "batch-size", "--ray-batch" = "batch-size", "--batch-size" = "batch-size",
+                     "-prgb" = "color", "--ply-rgb" = "color", "--color" = "color",
+                     "-trad" = "tube-radius", "--tube-rad" = "tube-radius", "--tube-radius" = "tube-radius",
+                     "-tseg" = "tube-segments", "--tube-seg" = "tube-segments", "--tube-segments" = "tube-segments")
+    if (key %in% names(ply_options)) {
+      name <- ply_options[[key]]
+      n <- if (name == "origin") 3L else 1L
+      res[[name]] <- expect_n_values(args, i, n, key)
+      i <- i + n + 1L
       next
     }
 
@@ -217,8 +257,8 @@ parse_args <- function(args) {
     if (key %in% c("-f", "--format")) {
       vals <- expect_n_values(args, i, 1, key)
       fmt <- tolower(vals[1])
-      if (!fmt %in% c("gpkg", "spatialite")) {
-        stop(sprintf("--format must be 'gpkg' or 'spatialite', got '%s'", vals[1]))
+      if (!fmt %in% c("gpkg", "spatialite", "ply")) {
+        stop(sprintf("--format must be 'gpkg', 'spatialite', or 'ply', got '%s'", vals[1]))
       }
       res[["format"]] <- fmt
       i <- i + 2
@@ -315,7 +355,7 @@ normalize_outfile <- function(path) {
 }
 
 resolve_output_format <- function(outfile, fmt_flag = NULL) {
-  ext_map <- c(".gpkg" = "gpkg", ".sqlite" = "spatialite", ".sqlite3" = "spatialite", ".spatialite" = "spatialite")
+  ext_map <- c(".gpkg" = "gpkg", ".sqlite" = "spatialite", ".sqlite3" = "spatialite", ".spatialite" = "spatialite", ".ply" = "ply")
   ext <- tolower(tools::file_ext(outfile))
   ext_dot <- if (nzchar(ext)) paste0(".", ext) else ""
 
@@ -327,8 +367,8 @@ resolve_output_format <- function(outfile, fmt_flag = NULL) {
     fmt <- "gpkg"
   }
 
-  if (!nzchar(ext_dot)) {
-    default_ext <- if (fmt == "spatialite") ".spatialite" else ".gpkg"
+  if (!ext_dot %in% names(ext_map)) {
+    default_ext <- switch(fmt, spatialite = ".spatialite", ply = ".ply", ".gpkg")
     outfile <- paste0(outfile, default_ext)
   }
 
@@ -1197,11 +1237,230 @@ quick_view <- function(path, line_layer, point_layer = NULL) {
   invisible(NULL)
 }
 
+ply_settings <- function(opts) {
+  defaults <- list(origin = c(0, 0, 0), "far-scale" = 3, "offset-distance" = 0,
+                   "offset-fraction" = 0, "batch-size" = 200000, "tube-radius" = 0, "tube-segments" = 8)
+  settings <- lapply(names(defaults), function(k) {
+    x <- suppressWarnings(as.numeric(get_optional(opts, k, defaults[[k]])))
+    if (any(!is.finite(x))) stop(sprintf("--%s requires finite numeric values.", k))
+    x
+  })
+  names(settings) <- names(defaults)
+  if (!is.null(opts[["offset-distance"]]) && !is.null(opts[["offset-fraction"]])) {
+    stop("--offset-distance and --offset-fraction are mutually exclusive.")
+  }
+  if (settings[["far-scale"]] <= 0) stop("--ray-scale must be > 0.")
+  if (settings[["batch-size"]] <= 0 || settings[["batch-size"]] != floor(settings[["batch-size"]])) stop("--ray-batch must be a positive integer.")
+  if (settings[["tube-radius"]] < 0) stop("--tube-rad must be >= 0.")
+  if (settings[["tube-segments"]] < 3 || settings[["tube-segments"]] != floor(settings[["tube-segments"]])) stop("--tube-seg must be an integer >= 3.")
+  rgb <- suppressWarnings(as.numeric(strsplit(get_optional(opts, "color", "255,255,255"), ",", fixed = TRUE)[[1]]))
+  if (length(rgb) != 3L || any(!is.finite(rgb)) || any(rgb != floor(rgb) | rgb < 0 | rgb > 255)) stop("--ply-rgb requires three integers in 0..255: R,G,B.")
+  settings$color <- rgb
+  settings$input_mesh <- get_optional(opts, "input-mesh", NULL)
+  if (is.null(settings$input_mesh) || !file.exists(settings$input_mesh) || dir.exists(settings$input_mesh)) {
+    stop("PLY output requires an existing --input-mesh/-mesh file.")
+  }
+  settings
+}
+
+metadata_values <- function(record) {
+  vapply(record, function(x) {
+    if (is.logical(x)) return(paste(tolower(as.character(x)), collapse = " "))
+    if (is.numeric(x)) return(paste(sprintf("%.15g", x), collapse = " "))
+    paste(x, collapse = " ")
+  }, character(1))
+}
+
+ply_quote <- function(value) {
+  escaped <- vapply(utf8ToInt(enc2utf8(value)), function(x) {
+    if (x == 34L) return('\\"')
+    if (x == 92L) return('\\\\')
+    if (x < 32L) return(sprintf("\\u%04x", x))
+    intToUtf8(x)
+  }, character(1))
+  paste0('"', paste(escaped, collapse = ""), '"')
+}
+
+cross3 <- function(a, b) c(a[2] * b[3] - a[3] * b[2], a[3] * b[1] - a[1] * b[3], a[1] * b[2] - a[2] * b[1])
+normalize3 <- function(x) {
+  n <- sqrt(sum(x * x))
+  if (n == 0) x else x / n
+}
+
+ply_tubes <- function(points, polylines, radius, segments) {
+  vertices <- faces <- vector("list", length(polylines))
+  offset <- 0L
+  for (part in seq_along(polylines)) {
+    pts <- points[polylines[[part]], , drop = FALSE]
+    keep <- c(TRUE, sqrt(rowSums((pts[-1, , drop = FALSE] - pts[-nrow(pts), , drop = FALSE])^2)) > radius * 1e-9)
+    pts <- pts[keep, , drop = FALSE]
+    if (nrow(pts) < 2L) next
+    closed <- sqrt(sum((pts[1, ] - pts[nrow(pts), ])^2)) < radius * 1e-3
+    if (closed) pts <- pts[-nrow(pts), , drop = FALSE]
+    n <- nrow(pts)
+    if (n < 2L) next
+    tangents <- matrix(0, n, 3)
+    tangents[1, ] <- normalize3(pts[2, ] - pts[1, ])
+    tangents[n, ] <- normalize3(pts[n, ] - pts[n - 1L, ])
+    if (n > 2L) for (i in 2:(n - 1L)) tangents[i, ] <- normalize3(pts[i + 1L, ] - pts[i - 1L, ])
+    normals <- binormals <- matrix(0, n, 3)
+    ref <- if (abs(tangents[1, 3]) > 0.9) c(0, 1, 0) else c(0, 0, 1)
+    normals[1, ] <- normalize3(cross3(tangents[1, ], ref))
+    binormals[1, ] <- normalize3(cross3(tangents[1, ], normals[1, ]))
+    for (i in 2:n) {
+      normal <- normals[i - 1L, ] - sum(normals[i - 1L, ] * tangents[i, ]) * tangents[i, ]
+      if (sqrt(sum(normal^2)) < 1e-12) {
+        ref <- if (abs(tangents[i, 3]) > 0.9) c(0, 1, 0) else c(0, 0, 1)
+        normal <- cross3(tangents[i, ], ref)
+      }
+      normals[i, ] <- normalize3(normal)
+      binormals[i, ] <- normalize3(cross3(tangents[i, ], normals[i, ]))
+    }
+    angles <- 2 * pi * (0:(segments - 1L)) / segments
+    v <- matrix(0, n * segments + if (closed) 0L else 2L, 3)
+    for (i in seq_len(n)) {
+      ring <- outer(cos(angles), normals[i, ]) + outer(sin(angles), binormals[i, ])
+      v[(i - 1L) * segments + seq_len(segments), ] <- sweep(radius * ring, 2, pts[i, ], "+")
+    }
+    pairs <- if (closed) n else n - 1L
+    f <- matrix(0L, pairs * segments * 2L + if (closed) 0L else 2L * segments, 3)
+    cursor <- 0L
+    k <- 0:(segments - 1L)
+    k2 <- (k + 1L) %% segments
+    for (i in seq_len(pairs)) {
+      j <- if (i == n) 1L else i + 1L
+      a <- offset + (i - 1L) * segments + k
+      b <- offset + (i - 1L) * segments + k2
+      c <- offset + (j - 1L) * segments + k2
+      d <- offset + (j - 1L) * segments + k
+      f[cursor + seq_len(2L * segments), ] <- rbind(cbind(a, b, c), cbind(a, c, d))
+      cursor <- cursor + 2L * segments
+    }
+    if (!closed) {
+      v[n * segments + 1:2, ] <- pts[c(1, n), , drop = FALSE]
+      f[cursor + seq_len(2L * segments), ] <- rbind(
+        cbind(offset + n * segments, offset + k2, offset + k),
+        cbind(offset + n * segments + 1L, offset + (n - 1L) * segments + k, offset + (n - 1L) * segments + k2))
+    }
+    vertices[[part]] <- v
+    faces[[part]] <- f
+    offset <- offset + nrow(v)
+  }
+  list(vertices = do.call(rbind, vertices), elements = do.call(rbind, faces))
+}
+
+write_fitted_ply <- function(output, settings, grid, res, extent, nde, metadata = NULL) {
+  if (!requireNamespace("Rvcg", quietly = TRUE)) stop("PLY output requires Rvcg: install.packages('Rvcg') or conda install -c conda-forge r-rvcg.")
+  mesh <- Rvcg::vcgImport(settings$input_mesh, updateNormals = FALSE, clean = TRUE, silent = TRUE)
+  if (is.null(mesh$it) || ncol(mesh$it) == 0L || any(!is.finite(mesh$vb))) stop("Input mesh has no finite triangular surface.")
+  origin <- settings$origin
+  radius <- max(sqrt(colSums(sweep(mesh$vb[1:3, , drop = FALSE], 1, origin, "-")^2)))
+  if (!is.finite(radius) || radius <= 0) stop("Input mesh radius must be positive.")
+  far <- radius * settings[["far-scale"]]
+  offset <- settings[["offset-distance"]] + radius * settings[["offset-fraction"]]
+  full <- abs(extent[3] - extent[1] - 360) < 1e-9
+  lats <- seq_inclusive(extent[4], extent[2], grid[2])
+  lons <- seq_inclusive(extent[1], extent[3], grid[1])
+  if (nde && full && length(lons) > 1L && abs(tail(lons, 1) - extent[3]) < 1e-9) lons <- head(lons, -1)
+  lon_samples <- seq_inclusive(extent[1], extent[3], res[1])
+  if (full && abs(tail(lon_samples, 1) - extent[3]) < 1e-9) lon_samples <- head(lon_samples, -1)
+  lat_samples <- seq_inclusive(extent[4], extent[2], res[2])
+  samples <- c(lapply(lats, function(lat) cbind(lat, lon_samples)),
+               lapply(lons, function(lon) cbind(lat_samples, lon)))
+  sizes <- vapply(samples, nrow, integer(1))
+  end <- cumsum(sizes)
+  start <- c(1L, head(end, -1L) + 1L)
+  angles <- do.call(rbind, samples) * pi / 180
+  directions <- cbind(cos(angles[, 1]) * cos(angles[, 2]), cos(angles[, 1]) * sin(angles[, 2]), sin(angles[, 1]))
+  points <- matrix(NA_real_, nrow(directions), 3)
+  hit <- rep(FALSE, nrow(directions))
+  batch <- settings[["batch-size"]]
+  cat(sprintf("[INFO] Rvcg ray intersector; %d faces, %d ray samples\n", ncol(mesh$it), nrow(directions)))
+  for (first in seq(1, nrow(directions), by = batch)) {
+    ids <- first:min(first + batch - 1L, nrow(directions))
+    d <- directions[ids, , drop = FALSE]
+    rays <- Rvcg::setRays(sweep(d * far, 2, origin, "+"), -d)
+    found <- Rvcg::vcgRaySearch(rays, mesh, maxtol = far + radius, mindist = FALSE)
+    valid <- found$quality == 1 & colSums(!is.finite(found$vb[1:3, , drop = FALSE])) == 0
+    selected <- ids[valid]
+    points[selected, ] <- t(found$vb[1:3, valid, drop = FALSE]) + directions[selected, , drop = FALSE] * offset
+    hit[selected] <- TRUE
+  }
+  polylines <- list()
+  for (i in seq_along(samples)) {
+    ids <- start[i]:end[i]
+    groups <- rle(hit[ids])
+    ends <- cumsum(groups$lengths)
+    begins <- c(1L, head(ends, -1L) + 1L)
+    for (j in which(groups$values & groups$lengths >= 2L)) {
+      line <- ids[begins[j]:ends[j]]
+      if (i <= length(lats) && full && all(hit[ids])) line <- c(line, line[1])
+      polylines[[length(polylines) + 1L]] <- line
+    }
+  }
+  if (length(polylines) == 0L) stop("No fitted edges were generated; the existing output is unchanged.")
+  tube <- settings[["tube-radius"]] > 0
+  if (tube) {
+    geometry <- ply_tubes(points, polylines, settings[["tube-radius"]], settings[["tube-segments"]])
+    vertices <- geometry$vertices
+    elements <- geometry$elements
+    if (is.null(elements) || nrow(elements) == 0L) stop("No tube faces were generated.")
+  } else {
+    vertices <- points[hit, , drop = FALSE]
+    vertex_ids <- rep(NA_integer_, length(hit))
+    vertex_ids[hit] <- seq_len(sum(hit)) - 1L
+    elements <- do.call(rbind, lapply(polylines, function(line) cbind(vertex_ids[head(line, -1)], vertex_ids[tail(line, -1)])))
+  }
+  con <- file(output, "wt", encoding = "UTF-8")
+  on.exit(close(con), add = TRUE)
+  writeLines(c("ply", "format ascii 1.0"), con)
+  if (!is.null(metadata)) {
+    metadata$mesh_radius <- radius
+    metadata$ray_engine <- "Rvcg"
+    values <- metadata_values(metadata)
+    writeLines(paste0("comment mkgraticule ", names(values), "=", vapply(values, ply_quote, character(1))), con)
+  }
+  writeLines(c(sprintf("element vertex %d", nrow(vertices)), "property float x", "property float y", "property float z"), con)
+  if (tube) {
+    writeLines(c("property uchar red", "property uchar green", "property uchar blue", sprintf("element face %d", nrow(elements)), "property list uchar int vertex_indices"), con)
+  } else {
+    writeLines(c(sprintf("element edge %d", nrow(elements)), "property int vertex1", "property int vertex2", "property uchar red", "property uchar green", "property uchar blue"), con)
+  }
+  writeLines("end_header", con)
+  rgb <- settings$color
+  for (i in seq_len(nrow(vertices))) {
+    text <- sprintf("%.9f %.9f %.9f", vertices[i, 1], vertices[i, 2], vertices[i, 3])
+    writeLines(if (tube) paste(text, paste(rgb, collapse = " ")) else text, con)
+  }
+  for (i in seq_len(nrow(elements))) {
+    text <- paste(elements[i, ], collapse = " ")
+    writeLines(if (tube) paste("3", text) else paste(text, paste(rgb, collapse = " ")), con)
+  }
+  cat(sprintf("Saved PLY vertices: %d; %s: %d; ray hits: %d; ray misses: %d\n", nrow(vertices), if (tube) "faces" else "edges", nrow(elements), sum(hit), sum(!hit)))
+}
+
+reproject_grid <- function(grid, crs, skip, partial) {
+  previous <- Sys.getenv("OGR_ENABLE_PARTIAL_REPROJECTION", unset = NA_character_)
+  on.exit(if (is.na(previous)) Sys.unsetenv("OGR_ENABLE_PARTIAL_REPROJECTION") else Sys.setenv(OGR_ENABLE_PARTIAL_REPROJECTION = previous), add = TRUE)
+  Sys.setenv(OGR_ENABLE_PARTIAL_REPROJECTION = if (partial) "TRUE" else "FALSE")
+  transformed <- tryCatch(suppressWarnings(st_transform(grid, crs, partial = partial)), error = function(e) {
+    if (!skip) stop(e)
+    geoms <- lapply(st_geometry(grid), function(geom) {
+      tryCatch(suppressWarnings(st_transform(st_sfc(geom, crs = st_crs(grid)), crs, partial = partial))[[1]],
+               error = function(e) st_linestring())
+    })
+    st_set_geometry(grid, st_sfc(geoms, crs = crs))
+  })
+  failed <- st_is_empty(transformed)
+  if (any(failed) && !skip) stop("Some grid lines failed reprojection. Restrict -e or use -s/--skipfailures, optionally with -p/--partial-reprojection.")
+  if (any(failed)) message(sprintf("WARNING: skipped %d grid lines that failed reprojection.", sum(failed)))
+  transformed[!failed, , drop = FALSE]
+}
+
 main <- function() {
 opts <- parse_args(args)
 
 proj_crs  <- get_optional(opts, "proj-crs", "IAU_2015:30100")
-geo_crs   <- infer_geo_crs_from_srs(proj_crs)
 out_info  <- resolve_output_format(
   get_required(opts, "outfile"),
   get_optional(opts, "format", NULL)
@@ -1225,11 +1484,11 @@ lon_min   <- to_num(get_optional(opts, "lon-min", "-180"), "--lon-min / -e[1]")
 lon_max   <- to_num(get_optional(opts, "lon-max",  "180"), "--lon-max / -e[3]")
 units     <- get_optional(opts, "units", "degrees")
 is_meters <- identical(units, "meters")
-# With -u meters, -g and -r have defaults (5000 m / 100 m); in degree mode -g is required.
-mer_step  <- to_num(if (is_meters) get_optional(opts, "meridian-step", "5000") else get_required(opts, "meridian-step"), "--meridian-step / -g[1]")
-par_step  <- to_num(if (is_meters) get_optional(opts, "parallel-step", "5000") else get_required(opts, "parallel-step"), "--parallel-step / -g[2]")
+# Shared defaults match Python: 5 degrees / 0.1 degrees, or 5000 m / 100 m.
+mer_step  <- to_num(get_optional(opts, "meridian-step", if (is_meters) "5000" else "5"), "--meridian-step / -g[1]")
+par_step  <- to_num(get_optional(opts, "parallel-step", if (is_meters) "5000" else "5"), "--parallel-step / -g[2]")
 vstep_lat <- to_num(get_optional(opts, "vertex-step-lat", if (is_meters) "100" else "0.1"), "--vertex-step-lat / -r[2]")
-vstep_lon <- to_num(get_optional(opts, "vertex-step-lon", if (is_meters) "100" else "0.5"), "--vertex-step-lon / -r[1]")
+vstep_lon <- to_num(get_optional(opts, "vertex-step-lon", if (is_meters) "100" else "0.1"), "--vertex-step-lon / -r[1]")
 
 assert_positive(mer_step, "--meridian-step / -g[1]")
 assert_positive(par_step, "--parallel-step / -g[2]")
@@ -1263,6 +1522,50 @@ for (nm in c("lat_orig", "lat_sp", "lat_sp2")) {
   }
 }
 
+skip <- isTRUE(opts[["skipfailures"]])
+partial <- isTRUE(opts[["partial-reprojection"]])
+if (identical(out_info$format, "ply")) {
+  if (is_meters) stop("-u meters is not supported with PLY output.")
+  settings <- ply_settings(opts)
+  extent <- c(lon_min, lat_max, lon_max, lat_min)
+  grid <- c(mer_step, par_step)
+  res <- c(vstep_lon, vstep_lat)
+  nde <- isTRUE(opts[["no-duplicate-endpoint"]])
+  if (isTRUE(opts[["dry-run"]])) {
+    cat(sprintf("Dry run: %s\nFormat: ply; units: degrees\nCoordinates: input mesh coordinates (PLY)\n", output))
+    cat(sprintf("Input mesh: %s\nGrid: %s; resolution: %s\n", settings$input_mesh, paste(grid, collapse = " "), paste(res, collapse = " ")))
+    cat(sprintf("Extent (xmin ymax xmax ymin): %s\n", paste(extent, collapse = " ")))
+    cat("PLY size and fitted geometry are not estimated; mesh loading and ray casting are not performed.\n")
+    cat(sprintf("Metadata: %s\n", if (isTRUE(opts[["metadata"]])) "enabled" else "disabled"))
+    cat(if (file.exists(output)) "Existing output would be replaced.\n" else "A new output would be created.\n")
+    cat("No files were written.\n")
+    return(invisible(NULL))
+  }
+  record <- NULL
+  if (isTRUE(opts[["metadata"]])) {
+    record <- list(version = VERSION, implementation = "R", created_utc = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+                   command = paste(shQuote(args), collapse = " "), outfile = output, format = "ply", units = "degrees",
+                   extent = extent, grid = grid, res = res, no_duplicate_endpoint = nde,
+                   input_mesh = settings$input_mesh, origin = settings$origin, far_scale = settings[["far-scale"]],
+                   offset_distance = settings[["offset-distance"]], offset_fraction = settings[["offset-fraction"]],
+                   batch_size = settings[["batch-size"]], color = settings$color,
+                   tube_radius = settings[["tube-radius"]], tube_segments = settings[["tube-segments"]])
+  }
+  if (isTRUE(opts[["qview"]])) message("WARNING: -q/--qview is not supported with PLY output; ignored.")
+  if (isTRUE(opts[["ray-slow"]])) message("NOTE: --ray-slow is not needed by the Rvcg accelerator; ignored.")
+  outdir <- dirname(output)
+  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  staging <- tempfile(pattern = ".mkgraticule-", tmpdir = outdir)
+  if (!dir.create(staging)) stop("Cannot create staging directory.")
+  on.exit(unlink(staging, recursive = TRUE), add = TRUE)
+  staged <- file.path(staging, basename(output))
+  write_fitted_ply(staged, settings, grid, res, extent, nde, record)
+  if (!file.rename(staged, output)) stop(sprintf("Cannot replace '%s'; the existing output is unchanged. Close applications using it and retry.", output))
+  cat(sprintf("Output: %s\n", output))
+  return(invisible(NULL))
+}
+
+geo_crs <- infer_geo_crs_from_srs(proj_crs)
 crs_geo  <- st_crs(geo_crs)
 crs_proj <- st_crs(proj_crs)
 projected <- !is_geographic_input(proj_crs)
@@ -1284,6 +1587,13 @@ if (is_meters) {
   }
   if (lon_min >= lon_max) stop(sprintf("extent requires ulx < lrx (got ulx=%s, lrx=%s).", lon_min, lon_max))
   if (lat_max <= lat_min) stop(sprintf("extent requires uly > lry (got uly=%s, lry=%s).", lat_max, lat_min))
+}
+method <- regmatches(crs_proj$wkt, regexpr('METHOD\\["[^"]+', crs_proj$wkt))
+limited <- length(method) > 0L && grepl("stereographic|orthographic|gnomonic|vertical perspective|azimuthal equidistant", method, ignore.case = TRUE)
+global_like <- lon_min <= -170 && lon_max >= 170 && lat_min <= -80 && lat_max >= 80
+if (!is_meters && projected && limited && global_like) {
+  if (!skip) stop("Projected CRS with near-global extent detected. Restrict -e or use -s/--skipfailures, optionally with -p/--partial-reprojection.")
+  message("WARNING: near-global extent in a limited-domain projection; some features may be missing.")
 }
 if (!isTRUE(opts[["dry-run"]])) confirm_output_size(
   is_meters, lon_min, lon_max, lat_min, lat_max, mer_step, par_step, vstep_lon, vstep_lat,
@@ -1347,11 +1657,8 @@ finish_output <- function() {
     if (length(params) > 0L) {
       record <- c(record, setNames(params, paste0("crs_parameter_", names(params))))
     }
-    values <- vapply(record, function(x) {
-      if (is.logical(x)) return(paste(tolower(as.character(x)), collapse = " "))
-      if (is.numeric(x)) return(paste(sprintf("%.15g", x), collapse = " "))
-      paste(x, collapse = " ")
-    }, character(1))
+    if (!is_meters) record <- c(record, list(skipfailures = skip, partial_reprojection = partial))
+    values <- metadata_values(record)
     con <- dbConnect(SQLite(), output)
     tryCatch({
       dbExecute(con, "CREATE TABLE mkgraticule_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
@@ -1381,6 +1688,7 @@ if (identical(units, "meters")) {
   if (isTRUE(get_optional(opts, "no-duplicate-endpoint", FALSE))) {
     message("NOTE: -nde ignored with -u meters (no reprojection is performed).")
   }
+  if (skip || partial) message("NOTE: -s/-p ignored with -u meters (no reprojection is performed).")
 
   xs <- meter_ticks(lon_min, lon_max, mer_step)
   ys <- meter_ticks(lat_min, lat_max, par_step)
@@ -1612,7 +1920,7 @@ if (projected) {
     cat(sprintf("Projection parameter overrides: %s\n\n", paste(override_parts, collapse = ", ")))
   }
   show_wkt(crs_proj)
-  grat_out <- st_transform(grat_ll, crs_proj)
+  grat_out <- reproject_grid(grat_ll, crs_proj, skip, partial)
 } else {
   cat(sprintf("Export (no reprojection): %s\n\n", authority_label(proj_crs)))
   grat_out <- grat_ll

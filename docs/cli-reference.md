@@ -11,7 +11,7 @@ mkgraticule [options] outfile
 | Option | Default | R | Description |
 | ------ | ------- | - | ----------- |
 | `outfile` | — | ✓ | Output filename. If no extension is given, `.gpkg` is appended. |
-| `-f`, `--format` | auto | ✓ (`gpkg`, `spatialite`) | `gpkg`, `spatialite` or `ply`. Auto-detected from the extension if omitted. |
+| `-f`, `--format` | auto | ✓ | `gpkg`, `spatialite` or `ply`. Auto-detected from the extension if omitted. |
 | `-l`, `--layer` | `grid` | ✓ | Output layer name (the companion point layer is `point`, or `<layer>_point` when `-l` is set). |
 | `-v`, `--version` | — | ✓ | Show the version and exit. |
 | `-h`, `--help` | — | ✓ | Show help and exit. |
@@ -28,8 +28,8 @@ For a feature and default-value comparison, see [Python and R](implementation-co
 | ------ | ------- | - | ----------- |
 | `-srs`, `--srs` | `IAU_2015:30100` | ✓ | Target spatial reference (IAU code, other GDAL/PROJ code, or `*.prj` file). |
 | `-e`, `--extent ulx uly lrx lry` | `-180 90 180 -90` | ✓ | Extent in degrees (`xmin ymax xmax ymin`). With `-u meters`: projected metres, required. |
-| `-g`, `--grid xstep ystep` | `5 5` (`-u meters`: `5000 5000`) | ✓ (degrees: required, no default) | Grid size in degrees (metres with `-u meters`). |
-| `-r`, `--res xres yres` | `0.1 0.1` (`-u meters`: `100 100`) | ✓ (degrees: `0.5 0.1`) | Sampling spacing used to polygonize lines, in degrees (metres with `-u meters`). Recommended range: see [Output size check](#output-size-check). |
+| `-g`, `--grid xstep ystep` | `5 5` (`-u meters`: `5000 5000`) | ✓ | Grid size in degrees (metres with `-u meters`). |
+| `-r`, `--res xres yres` | `0.1 0.1` (`-u meters`: `100 100`) | ✓ | Sampling spacing used to polygonize lines, in degrees (metres with `-u meters`). Recommended range: see [Output size check](#output-size-check). |
 | `-m`, `--major xmajor ymajor` | none | ✓ | Major interval; must be a natural-number multiple of the grid step. Sets `grid_type` to `major`/`minor`. |
 | `-u`, `--units` | `degrees` | ✓ | `degrees` or `meters`. See [Metre-based grids](metre-grids.md). |
 | `-nde`, `--no-duplicate-endpoint` | off | ✓ | Drop the duplicate endpoint meridian for ~360° longitude spans. |
@@ -41,8 +41,8 @@ For a feature and default-value comparison, see [Python and R](implementation-co
 | `-lo`, `--lat-orig` | none | ✓ | Override latitude of origin / false origin / natural origin (degrees). |
 | `-ls`, `--lat-sp` | none | ✓ | Override the (1st) standard parallel (degrees). |
 | `-ls2`, `--lat-sp2` | none | ✓ | Override the 2nd standard parallel (degrees). |
-| `-s`, `--skipfailures` | off | — | Skip features that fail reprojection. |
-| `-p`, `--partial-reprojection` | off | — | Allow partial reprojection near projection-domain limits. |
+| `-s`, `--skipfailures` | off | ✓ | Skip features that fail reprojection. |
+| `-p`, `--partial-reprojection` | off | ✓ | Allow partial reprojection near projection-domain limits. |
 
 ## Output size check
 
@@ -68,9 +68,13 @@ The estimate is `vertices × 16 bytes` (2D coordinates in WKB). It is approximat
 | ------ | ------- | - | ----------- |
 | `-q`, `--qview` | off | ✓ | Open a window showing the whole grid after the file is written. See [Quick View](quick-view.md). |
 
-## PLY options (Python only)
+## PLY options (Python and R)
 
-These options are marked `[PLY only]` in `--help`. See [3D PLY](ply.md).
+These options are grouped separately in `--help`. See [3D PLY](ply.md).
+
+Both implementations use the same names and defaults. R uses Rvcg and does not
+require Python. `--ray-slow` selects Python's fallback behaviour; R accepts it as
+a compatibility flag and reports that it is ignored by the Rvcg accelerator.
 
 | Option | Default | Description |
 | ------ | ------- | ----------- |

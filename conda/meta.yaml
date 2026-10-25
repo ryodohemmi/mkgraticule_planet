@@ -1,4 +1,4 @@
-{% set version = "1.3.0" %}
+{% set version = "1.3.1" %}
 
 package:
   name: mkgraticule-planet
@@ -6,7 +6,7 @@ package:
 
 source:
   url: https://github.com/ryodohemmi/mkgraticule_planet/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: 8f906e7c5ed5762ec6cb0daaf6ac78679d8fd0d79371a3b27bc990e097e978df
+  # Add the v1.3.1 archive sha256 after the release tag is published.
 
 build:
   noarch: python
