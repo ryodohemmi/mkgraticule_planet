@@ -43,7 +43,7 @@ usage <- function(status = 0) {
     "  --metadata\n",
     "      Record generation settings in a SQLite table or PLY comments.\n",
     "  -srs, --srs SRS\n",
-    "      Set target spatial reference (IAU code or *.prj file).\n",
+    "      Set target spatial reference (IAU/EPSG code, PROJ/WKT string, or .wkt/.prj file).\n",
     "      See https://spatialreference.org/\n",
     "  -e, --extent ulx uly lrx lry\n",
     "      Set a spatial extent of the output file\n",
@@ -488,9 +488,25 @@ extract_wkt_node <- function(wkt, node_name) {
 extract_last_authority_from_text <- function(txt) {
   if (is.null(txt) || is.na(txt) || !nzchar(txt)) return(NULL)
 
+  # Only the root node's identifier names this CRS, not nested unit/datum IDs.
+  chars <- strsplit(txt, "", fixed = TRUE)[[1]]
+  direct <- logical(length(chars))
+  depth <- 0L
+  in_quote <- FALSE
+  for (i in seq_along(chars)) {
+    ch <- chars[i]
+    direct[i] <- depth == 1L && !in_quote
+    if (ch == '"') in_quote <- !in_quote
+    if (!in_quote) {
+      if (ch == "[") depth <- depth + 1L
+      if (ch == "]") depth <- depth - 1L
+    }
+  }
+
   id_pat <- 'ID\\["([^"]+)",\\s*([0-9]+)(?:\\s*,\\s*([0-9]+))?\\]'
   id_hits <- gregexpr(id_pat, txt, perl = TRUE)
   id_vals <- regmatches(txt, id_hits)[[1]]
+  if (length(id_vals)) id_vals <- id_vals[direct[id_hits[[1]]]]
   if (length(id_vals) > 0) {
     last_hit <- id_vals[[length(id_vals)]]
     mm <- regexec(id_pat, last_hit, perl = TRUE)
@@ -502,6 +518,7 @@ extract_last_authority_from_text <- function(txt) {
   auth_pat <- 'AUTHORITY\\["([^"]+)",\\s*"?([0-9]+)"?\\]'
   auth_hits <- gregexpr(auth_pat, txt, perl = TRUE)
   auth_vals <- regmatches(txt, auth_hits)[[1]]
+  if (length(auth_vals)) auth_vals <- auth_vals[direct[auth_hits[[1]]]]
   if (length(auth_vals) > 0) {
     last_hit <- auth_vals[[length(auth_vals)]]
     mm <- regexec(auth_pat, last_hit, perl = TRUE)

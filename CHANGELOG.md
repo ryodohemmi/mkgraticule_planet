@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Read only the CRS node's own authority identifier in R, so custom PROJ/WKT definitions do not mistake nested unit identifiers such as EPSG:9122 for a geographic CRS.
+
+### Changed
+- Expand GitHub Actions coverage to Linux and Windows with Python 3.11, 3.12 and 3.13, retaining required R and PLY integration tests.
+- Explicitly document `.wkt` / `.prj` CRS file inputs in both CLIs' `-srs` help and the documentation.
+
 ## [1.3.1] - 2026-10-25
 
 ### Added

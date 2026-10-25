@@ -347,7 +347,7 @@ def get_args():
         "--srs",
         type=str,
         default="IAU_2015:30100",
-        help="Set target spatial reference (IAU code or *.prj file).\
+        help="Set target spatial reference (IAU/EPSG code, PROJ/WKT string, or .wkt/.prj file).\
             \nSee https://spatialreference.org/",
     )
     parser.add_argument(
