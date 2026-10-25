@@ -651,7 +651,7 @@ terminal_width <- function(default = 80L) {
       suppressWarnings(as.integer(system("tput cols 2>/dev/null", intern = TRUE)))
     }, error = function(e) NA_integer_)
   }
-  if (is.na(cols) || cols <= 0) {
+  if (length(cols) != 1L || is.na(cols) || cols <= 0) {
     cols <- suppressWarnings(as.integer(getOption("width", default)))
   }
   if (is.na(cols) || cols <= 0) cols <- default

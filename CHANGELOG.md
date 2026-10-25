@@ -17,6 +17,9 @@ All notable changes to this project will be documented in this file.
 - Use a common plain-text metadata value format in Python and R, select settings by output type, and record actual CRS projection parameters separately from requested overrides.
 - Updated the package, standalone scripts, conda recipe and citation metadata to `1.3.0`.
 
+### Fixed
+- Fall back to the R display width when terminal width information is unavailable, including non-interactive CI environments.
+
 ## [1.2.1] - 2026-10-08
 
 ### Changed

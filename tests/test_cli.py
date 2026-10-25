@@ -199,6 +199,12 @@ class PythonStandalone(SharedCLI, unittest.TestCase):
 class RStandalone(SharedCLI, unittest.TestCase):
     command = (R_COMMAND or []) + [str(ROOT / "standalone/mkgraticule_planet.R")]
 
+    def test_without_terminal_information(self):
+        output = self.work / "grid.gpkg"
+        with patch.dict(os.environ, {"TERM": "", "COLUMNS": ""}):
+            log = self.grid(output)
+        self.assertEqual(self.assert_counts(output, log), (6, 0))
+
     def test_write_and_replacement_failure_preserve_output(self):
         output = self.work / "grid.gpkg"
         for setup, message in (
