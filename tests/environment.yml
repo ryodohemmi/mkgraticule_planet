@@ -2,7 +2,7 @@ name: mkgraticule-tests
 channels:
   - conda-forge
 dependencies:
-  - python>=3.11,<3.14
+  - python>=3.11
   - pip
   - setuptools>=68
   - numpy

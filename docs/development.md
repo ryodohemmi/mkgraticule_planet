@@ -30,8 +30,10 @@ export MKGRATICULE_R_COMMAND='["conda", "run", "--no-capture-output", "-n", "rsf
 python -m unittest discover -s tests -v
 ```
 
-GitHub Actions runs the full suite on Linux and Windows on pushes and pull requests,
+GitHub Actions runs the full suite on Linux and Windows on pushes to `main` and pull requests,
 with Python 3.11, 3.12 and 3.13 and R in conda-forge environments (six combinations).
+The workflow matrix selects the Python versions; the environment file sets only
+the minimum version for local test environments.
 CI requires R tests and sets
 `MKGRATICULE_REQUIRE_PLY=1` to fail if Python PLY dependencies or Rvcg are unavailable, and checks
 the installed command entry points. The suite

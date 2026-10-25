@@ -163,6 +163,9 @@ class SharedCLI:
         wkt = target.ExportToWkt(["FORMAT=WKT2_2019", "MULTILINE=YES"])
         cases = [("PROJ", definition, target), ("WKT2", wkt, target),
                  ("WKT1", target.ExportToWkt(["FORMAT=WKT1_ESRI"]), target)]
+        for pairs in (1, 3):
+            quoted = wkt.replace('PROJCRS["', 'PROJCRS["' + 'quoted ""[name]"" ' * pairs, 1)
+            cases.append((f"WKT2 with {pairs} escaped quote pairs", quoted, target))
         for suffix in (".wkt", ".prj"):
             path = self.work / ("custom projection" + suffix)
             path.write_text(wkt, encoding="utf-8")
