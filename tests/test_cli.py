@@ -81,7 +81,7 @@ class SharedCLI:
         self.assertEqual(self.assert_counts(output, log), (6, 0))
         with closing(sqlite3.connect(output)) as con:
             record = dict(con.execute("SELECT key, value FROM mkgraticule_metadata"))
-            self.assertEqual(record["version"], "1.3.1")
+            self.assertEqual(record["version"], "1.3.2")
             self.assertIn("Moon", record["crs_wkt"])
             self.assertEqual(record["format"], "gpkg")
             self.assertEqual(record["layer"], "grid")
@@ -208,7 +208,7 @@ class SharedCLI:
         log = self.grid(output, "--metadata")
         self.assertEqual(self.assert_counts(output, log), (6, 0))
         with closing(sqlite3.connect(output)) as con:
-            self.assertEqual(con.execute("SELECT value FROM mkgraticule_metadata WHERE key='version'").fetchone()[0], "1.3.1")
+            self.assertEqual(con.execute("SELECT value FROM mkgraticule_metadata WHERE key='version'").fetchone()[0], "1.3.2")
 
     def test_format_override_default_extension(self):
         for name in ("grid", "grid.db"):
@@ -438,7 +438,7 @@ class PLYTests:
             self.run_cli("-mesh", mesh, "-g", 90, 45, "-r", 30, 20, "-e", -180, 80, 180, -80,
                          "--metadata", *extra, output)
             header, body = output.read_text().split("end_header\n", 1)
-            self.assertIn("comment mkgraticule version=\"1.3.1\"", header)
+            self.assertIn("comment mkgraticule version=\"1.3.2\"", header)
             self.assertIn('comment mkgraticule grid="90 45"', header)
             for key in ("srs", "crs_wkt", "major", "layer", "qview", "yes", "dry_run"):
                 self.assertNotIn(f"comment mkgraticule {key}=", header)

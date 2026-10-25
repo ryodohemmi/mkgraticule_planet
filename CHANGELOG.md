@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.3.2] - 2026-10-25
 
 ### Fixed
 - Read only the CRS node's own authority identifier in R, so custom PROJ/WKT definitions do not mistake nested unit identifiers such as EPSG:9122 for a geographic CRS.
