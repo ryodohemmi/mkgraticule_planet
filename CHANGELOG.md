@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-10-25
+
+### Added
+- Added `--dry-run` to Python and R: validate settings and show the generation plan and approximate 2D output size without writing files, asking for confirmation or opening Quick View. Python PLY validates CLI options and the input mesh path without loading the mesh or ray casting.
+- Added opt-in `--metadata`: generation settings, version, UTC time and command arguments are recorded in a `mkgraticule_metadata` key/value table for GeoPackage/SpatiaLite, or header comments for Python PLY. The effective CRS WKT is included for 2D output.
+- Added shared Python/R integration tests and GitHub Actions CI, including standalone source parity, output formats, labels, CRS, polar points, dry runs, metadata, PLY and failure protection.
+- Added Python/R feature and default-value comparison tables and development documentation.
+
+### Changed
+- Generate output in a temporary directory on the destination filesystem and replace existing output only after generation and validation succeed. Existing files are still overwritten automatically; failed generation preserves the previous file.
+- Report actual saved 2D feature counts by reading the written output, with separate line/point counts and an explicit empty-line count. Outputs with no non-empty lines are rejected.
+- Keep the previous output intact and show an actionable message when replacement is denied (for example, an output open in QGIS). Output-size confirmation happens before creating output directories.
+- Use a common plain-text metadata value format in Python and R, select settings by output type, and record actual CRS projection parameters separately from requested overrides.
+- Updated the package, standalone scripts, conda recipe and citation metadata to `1.3.0`.
+
 ## [1.2.1] - 2026-10-08
 
 ### Changed

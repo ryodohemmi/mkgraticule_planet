@@ -15,6 +15,12 @@ mkgraticule [options] outfile
 | `-l`, `--layer` | `grid` | ✓ | Output layer name (the companion point layer is `point`, or `<layer>_point` when `-l` is set). |
 | `-v`, `--version` | — | ✓ | Show the version and exit. |
 | `-h`, `--help` | — | ✓ | Show help and exit. |
+| `--dry-run` | off | ✓ | Validate and show settings and estimated 2D output size without writing or asking for confirmation. PLY checks options and mesh path only. |
+| `--metadata` | off | ✓ | Record generation settings in a `mkgraticule_metadata` table (PLY: header comments). |
+
+Existing files are replaced automatically after successful generation and
+validation. See [output safety and generation records](usage.md#output-safety-and-generation-records).
+For a feature and default-value comparison, see [Python and R](implementation-comparison.md).
 
 ## Grid definition
 
@@ -52,6 +58,7 @@ For each axis, `-r` should satisfy `floor <= res <= step/2`, where the floor is 
 | Same, but stdin is not a terminal | Stops with exit status 1 unless `-y/--yes` is given. |
 | `res` above `step/2` | A note is printed and the command continues. |
 | PLY output | Not checked. |
+| `--dry-run` | No confirmation; estimated 2D size is shown without generating output. |
 
 The estimate is `vertices × 16 bytes` (2D coordinates in WKB). It is approximate: it counts geometry only and ignores the spatial index, so the real file is usually somewhat larger, and it is an upper bound on the vertex count because lines that collapse to a point are still counted.
 

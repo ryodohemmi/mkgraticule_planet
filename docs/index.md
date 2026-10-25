@@ -11,6 +11,10 @@ Currently, two CLI implementations are available:
 
 The fitted 3D PLY output for OBJ/mesh shape models is available in the Python implementation only.
 
+See [Python and R comparison](implementation-comparison.md) for feature and
+default-value differences, and [output safety and generation records](usage.md#output-safety-and-generation-records)
+for `--dry-run`, `--metadata` and protection of existing output on failure.
+
 ## Quick start
 
 ```sh
@@ -38,7 +42,7 @@ See [Installation](installation.md) and [Usage](usage.md) for details.
 * Safer handling for projected CRS with limited domains:
     * abort on projected + near-global extent unless `-s/--skipfailures` is used
     * optional `-p/--partial-reprojection` for partial output near projection-domain limits
-* Override Lambert Conic Conformal projection parameters via `-lo` (latitude of origin), `-ls` (1st standard parallel), and `-ls2` (2nd standard parallel), allowing customization of the IAU defaults (0°, 20°, 60°)
+* Override Lambert Conic Conformal projection parameters via `-lo` (latitude of origin), `-ls` (1st standard parallel), and `-ls2` (2nd standard parallel), allowing customization of the target CRS defaults
 * Optional endpoint de-duplication for 360° longitude spans: `-nde/--no-duplicate-endpoint`
 * Automatic companion point layer (`point`) for projected CRS:
     * collapsed graticule features at projection singularities
