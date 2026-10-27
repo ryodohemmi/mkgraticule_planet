@@ -4,7 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Mondays at 12:17 JST (03:17 UTC), away from the busy start of the hour.
+    - cron: '17 3 * * 1'
   workflow_dispatch:
+    inputs:
+      fresh_environment:
+        description: Resolve dependencies afresh without the environment cache
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,7 +35,19 @@ jobs:
         with:
           environment-file: tests/environment.yml
           create-args: python=${{ matrix.python }}
-          cache-environment: true
+          cache-environment: ${{ github.event_name != 'schedule' && !inputs.fresh_environment }}
+      - name: Report dependency versions
+        run: |
+          python - <<'PY'
+          import platform
+          from osgeo import gdal, osr
+          print("Python:", platform.python_version())
+          print("GDAL (Python):", gdal.VersionInfo("RELEASE_NAME"))
+          print("PROJ (Python):", ".".join(map(str, (
+              osr.GetPROJVersionMajor(), osr.GetPROJVersionMinor(), osr.GetPROJVersionMicro()))))
+          PY
+          Rscript -e 'cat(R.version.string, "\n"); cat("sf:", as.character(packageVersion("sf")), "\n"); print(sf::sf_extSoftVersion())'
+          micromamba list
       - name: Install package
         run: python -m pip install --no-deps --no-build-isolation -e .
       - name: Python and R integration tests

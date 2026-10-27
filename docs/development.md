@@ -39,6 +39,37 @@ CI requires R tests and sets
 the installed command entry points. The suite
 does not exercise interactive Quick View windows or every OS/GDAL combination.
 
+### Weekly dependency compatibility checks
+
+The same six configurations run every Monday at 03:17 UTC (12:17 JST) on the
+default branch. Scheduled runs disable the micromamba environment cache and
+resolve dependencies afresh from conda-forge. Push and pull request runs retain
+the environment cache. To run the same fresh-environment check manually, open
+**Actions > Tests > Run workflow** and enable **fresh_environment**. With that
+option unchecked, manual runs retain the cache too.
+
+Every run logs the Python, Python-linked GDAL/PROJ, R and sf versions, sf's
+external library versions, and the complete conda package list before testing.
+This checks compatibility with versions the solver can install together for
+each OS/Python combination. It does not guarantee testing the newest upstream
+major release: conda-forge availability and other dependencies can constrain
+the selected versions. Test failures still require investigation and fixes;
+the workflow does not update users' environments or publish releases.
+
+Scheduled checks become active when the workflow is merged into the default
+branch; no additional secrets or external services are required. For failure
+emails, check your GitHub **Settings > Notifications > System > Actions** settings,
+enable **Email**, and optionally select **Only notify for failed workflows**.
+See [GitHub's Actions notification settings](https://docs.github.com/en/subscriptions-and-notifications/how-tos/managing-github-actions-notifications).
+Scheduled-workflow notifications go to the user who last changed the cron
+schedule, subject to their notification settings.
+
+GitHub may delay scheduled runs. In public repositories it also automatically
+disables schedules after 60 days without repository activity. If disabled, open
+the **Tests** workflow in **Actions** and re-enable it. Do not rely on manual runs
+alone as a guarantee against this inactivity rule. See
+[GitHub's schedule documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+
 The Python standalone file must remain byte-identical to
 `src/mkgraticule_planet/_cli.py`. Copy the implementation after editing it; the
 tests detect divergence.
