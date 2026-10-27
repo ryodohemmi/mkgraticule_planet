@@ -40,6 +40,8 @@ mkgraticule ... -nde
 ## Planetary CRS
 
 The `-srs` option accepts any coordinate reference system supported by GDAL / PROJ.
+It is required for 2D output (including `--dry-run`) and has no default. PLY uses
+input mesh coordinates and does not require this option.
 In both Python and R, this includes authority codes, custom PROJ strings, WKT
 strings, and paths to CRS definition files (`.wkt` or `.prj`). Quote paths that
 contain spaces, for example `-srs "CRS definitions/moon.wkt"`. These files contain

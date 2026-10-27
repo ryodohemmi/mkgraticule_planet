@@ -30,7 +30,7 @@ python mkgraticule_planet.py -u meters -g 100000 100000 -e -500000 500000 500000
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "1.3.2"
+__version__ = "1.4.0"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -346,8 +346,9 @@ def get_args():
         "-srs",
         "--srs",
         type=str,
-        default="IAU_2015:30100",
+        default=None,
         help="Set target spatial reference (IAU/EPSG code, PROJ/WKT string, or .wkt/.prj file).\
+            \nRequired for 2D output; no default. Not required for PLY.\
             \nSee https://spatialreference.org/",
     )
     parser.add_argument(
@@ -443,6 +444,11 @@ def get_args():
 
     _reject_unknown_option_tokens(parser, sys.argv[1:])
     args = parser.parse_args()
+
+    fmt_key, _, _, _, _ = _resolve_output_format(args.outfile, args.format)
+    if fmt_key != "ply" and (args.srs is None or not args.srs.strip()):
+        parser.error("-srs/--srs is required for 2D output (GeoPackage/SpatiaLite); "
+                     "specify a CRS code, PROJ/WKT string, or .wkt/.prj file.")
 
     if args.units == "meters":
         if not args.grid_given:

@@ -13,7 +13,10 @@ The suite runs the package CLI, standalone Python script and standalone R script
 against small temporary datasets. It checks GeoPackage/SpatiaLite output,
 CRS and labels, shared defaults, major/minor classification, endpoint de-duplication, polar point
 layers, metre grids, saved counts, metadata opt-in, dry runs and preservation of
-existing output on failure. Python tests also cover partial write/replacement
+existing output on failure. Both 2D formats require an explicit nonblank CRS,
+including dry runs and format overrides; missing CRS tests check that no output
+directories are created and existing output is preserved. PLY tests run without
+`-srs`. Python tests also cover partial write/replacement
 failures, projection skips and standalone source parity. Shared Python/R PLY tests
 check edge/tube output, sampled surface points, offsets, batches and invalid options.
 R tests also simulate partial-write and replacement failures to verify that the

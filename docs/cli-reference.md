@@ -26,7 +26,7 @@ For a feature and default-value comparison, see [Python and R](implementation-co
 
 | Option | Default | R | Description |
 | ------ | ------- | - | ----------- |
-| `-srs`, `--srs` | `IAU_2015:30100` | ✓ | Target spatial reference (IAU code, other GDAL/PROJ code, or `*.prj` file). |
+| `-srs`, `--srs` | none; required for 2D | ✓ | Target CRS: IAU/EPSG code, PROJ/WKT string, or `.wkt`/`.prj` file. Required for GeoPackage/SpatiaLite, including `--dry-run`; not required for PLY. |
 | `-e`, `--extent ulx uly lrx lry` | `-180 90 180 -90` | ✓ | Extent in degrees (`xmin ymax xmax ymin`). With `-u meters`: projected metres, required. |
 | `-g`, `--grid xstep ystep` | `5 5` (`-u meters`: `5000 5000`) | ✓ | Grid size in degrees (metres with `-u meters`). |
 | `-r`, `--res xres yres` | `0.1 0.1` (`-u meters`: `100 100`) | ✓ | Sampling spacing used to polygonize lines, in degrees (metres with `-u meters`). Recommended range: see [Output size check](#output-size-check). |

@@ -239,6 +239,11 @@ For this reason, the 2D GIS outputs focus on formats that preserve CRS informati
 
 ## Usage
 
+From v1.4.0, **`-srs` / `--srs` is required for 2D output**, including
+`--dry-run`. There is no default CRS. If an older Moon command omitted it, add
+`-srs IAU_2015:30100`; for other bodies, specify the intended CRS. PLY uses the
+input mesh coordinate system and does not require `-srs`.
+
 ### Preview and generation records
 
 ```sh

@@ -8,6 +8,7 @@ identical binary output or identical geometries near projection-domain limits.
 | Capability | Python / GDAL | R / sf |
 | ---------- | ------------- | ------ |
 | GeoPackage / SpatiaLite | Yes | Yes |
+| 2D target CRS (`-srs`) | Required; no default | Required; no default |
 | Degree-based graticules and projected metre grids | Yes | Yes |
 | Latitude/longitude labels, major/minor classification | Yes | Yes |
 | Full-360° endpoint de-duplication (`-nde`) | Yes | Yes |

@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
   library(RSQLite)
 })
 
-VERSION <- "1.3.2"
+VERSION <- "1.4.0"
 args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function(status = 0) {
@@ -44,6 +44,7 @@ usage <- function(status = 0) {
     "      Record generation settings in a SQLite table or PLY comments.\n",
     "  -srs, --srs SRS\n",
     "      Set target spatial reference (IAU/EPSG code, PROJ/WKT string, or .wkt/.prj file).\n",
+    "      Required for 2D output; no default. Not required for PLY.\n",
     "      See https://spatialreference.org/\n",
     "  -e, --extent ulx uly lrx lry\n",
     "      Set a spatial extent of the output file\n",
@@ -1477,12 +1478,15 @@ reproject_grid <- function(grid, crs, skip, partial) {
 main <- function() {
 opts <- parse_args(args)
 
-proj_crs  <- get_optional(opts, "proj-crs", "IAU_2015:30100")
+proj_crs  <- get_optional(opts, "proj-crs", NULL)
 out_info  <- resolve_output_format(
   get_required(opts, "outfile"),
   get_optional(opts, "format", NULL)
 )
 output    <- out_info$outfile
+if (!identical(out_info$format, "ply") && (is.null(proj_crs) || !nzchar(trimws(proj_crs)))) {
+  stop("-srs/--srs is required for 2D output (GeoPackage/SpatiaLite); specify a CRS code, PROJ/WKT string, or .wkt/.prj file.")
+}
 is_gpkg   <- out_info$is_gpkg
 layer     <- get_optional(opts, "layer", NULL)
 if (is.null(layer)) {
