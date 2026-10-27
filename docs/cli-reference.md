@@ -26,7 +26,7 @@ For a feature and default-value comparison, see [Python and R](implementation-co
 
 | Option | Default | R | Description |
 | ------ | ------- | - | ----------- |
-| `-srs`, `--srs` | `IAU_2015:30100` | ✓ | Target spatial reference (IAU code, other GDAL/PROJ code, or `*.prj` file). |
+| `-s`, `-srs`, `--srs` | none; required for 2D | ✓ | Equivalent value-taking options for the target CRS: IAU/EPSG code, PROJ/WKT string, or `.wkt`/`.prj` file. Required for GeoPackage/SpatiaLite, including `--dry-run`; not required for PLY. |
 | `-e`, `--extent ulx uly lrx lry` | `-180 90 180 -90` | ✓ | Extent in degrees (`xmin ymax xmax ymin`). With `-u meters`: projected metres, required. |
 | `-g`, `--grid xstep ystep` | `5 5` (`-u meters`: `5000 5000`) | ✓ | Grid size in degrees (metres with `-u meters`). |
 | `-r`, `--res xres yres` | `0.1 0.1` (`-u meters`: `100 100`) | ✓ | Sampling spacing used to polygonize lines, in degrees (metres with `-u meters`). Recommended range: see [Output size check](#output-size-check). |
@@ -41,7 +41,7 @@ For a feature and default-value comparison, see [Python and R](implementation-co
 | `-lo`, `--lat-orig` | none | ✓ | Override latitude of origin / false origin / natural origin (degrees). |
 | `-ls`, `--lat-sp` | none | ✓ | Override the (1st) standard parallel (degrees). |
 | `-ls2`, `--lat-sp2` | none | ✓ | Override the 2nd standard parallel (degrees). |
-| `-s`, `--skipfailures` | off | ✓ | Skip features that fail reprojection. |
+| `-skipf`, `--skipfailures` | off | ✓ | Skip features that fail reprojection. |
 | `-p`, `--partial-reprojection` | off | ✓ | Allow partial reprojection near projection-domain limits. |
 
 ## Output size check
@@ -100,4 +100,4 @@ The previous long option names (`--mesh`, `--origin`, `--far-scale`, `--batch-si
 | `-u meters` with PLY output | Error |
 | `-q` with PLY output | Warning, `-q` ignored |
 | `-r` below the floor / output above 100 MB | Confirmation (see [Output size check](#output-size-check)) |
-| `-nde`, `-s`, `-p` with `-u meters` | Ignored (notice printed) |
+| `-nde`, `-skipf`, `-p` with `-u meters` | Ignored (notice printed) |

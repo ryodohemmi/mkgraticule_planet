@@ -30,7 +30,7 @@ python mkgraticule_planet.py -u meters -g 100000 100000 -e -500000 500000 500000
 #
 # This software is provided "as is", without warranty of any kind.
 
-__version__ = "1.3.2"
+__version__ = "1.4.0"
 
 try:
     from osgeo import osr, ogr, gdal
@@ -343,11 +343,13 @@ def get_args():
             \nIf omitted, grid_type is NULL.",
     )
     parser.add_argument(
+        "-s",
         "-srs",
         "--srs",
         type=str,
-        default="IAU_2015:30100",
+        default=None,
         help="Set target spatial reference (IAU/EPSG code, PROJ/WKT string, or .wkt/.prj file).\
+            \nRequired for 2D output; no default. Not required for PLY.\
             \nSee https://spatialreference.org/",
     )
     parser.add_argument(
@@ -384,7 +386,7 @@ def get_args():
             \n(requires matplotlib; close the window to finish).",
     )
     parser.add_argument(
-        "-s",
+        "-skipf",
         "--skipfailures",
         action="store_true",
         help="Skip features that fail reprojection (equivalent to GDAL -skipfailures).",
@@ -443,6 +445,12 @@ def get_args():
 
     _reject_unknown_option_tokens(parser, sys.argv[1:])
     args = parser.parse_args()
+
+    fmt_key, _, _, _, _ = _resolve_output_format(args.outfile, args.format)
+    if fmt_key != "ply" and (args.srs is None or not args.srs.strip()):
+        parser.error("-s/-srs/--srs is required for 2D output (GeoPackage/SpatiaLite); "
+                     "specify a CRS code, PROJ/WKT string, or .wkt/.prj file "
+                     "(e.g. -srs IAU_2015:30100 for Moon).")
 
     if args.units == "meters":
         if not args.grid_given:
@@ -1729,7 +1737,7 @@ def _write_meters_grid(args, outfile, ogr_driver_name, ds_create_opts, is_gpkg,
     ignored = [
         name for name, on in (
             ("-nde", args.no_duplicate_endpoint),
-            ("-s", args.skipfailures),
+            ("-skipf", args.skipfailures),
             ("-p", args.partial_reprojection),
         ) if on
     ]
@@ -2211,8 +2219,8 @@ def _run(args, outfile):
                 "Some projection types (e.g., polar stereographic, orthographic) have limited valid domains, "
                 "so global reprojection may fail.\n"
                 "Restrict the geographic extent with -e (e.g., \"-e -180 -60 180 -90\").\n"
-                "To force output, use -s/--skipfailures. "
-                "Combining -s with -p/--partial-reprojection may allow partially valid geometries to be written."
+                "To force output, use -skipf/--skipfailures. "
+                "Combining -skipf with -p/--partial-reprojection may allow partially valid geometries to be written."
             )
             print("\n" + msg + "\n", file=sys.stderr, flush=True)
             raise RuntimeError(msg)
@@ -2221,10 +2229,10 @@ def _run(args, outfile):
             print(
                 "\nWARNING: Projected CRS with near-global extent.\n"
                 "Some features may fall outside the projection domain and will be skipped "
-                "because -s/--skipfailures is enabled.\n"
+                "because -skipf/--skipfailures is enabled.\n"
                 "Consider restricting the extent with -e for a complete graticule in the target region "
                 "(e.g., \"-e -180 -60 180 -90\").\n"
-                "Alternatively, combining -s with -p/--partial-reprojection may allow partially valid geometries to be written.\n",
+                "Alternatively, combining -skipf with -p/--partial-reprojection may allow partially valid geometries to be written.\n",
                 file=sys.stderr,
             )
 
@@ -2599,7 +2607,7 @@ def _run(args, outfile):
         else:
             print(
                 "NOTE: Reprojection may fail for near-global extents in some projected CRS. "
-                "Use -e to restrict the extent, or -s/--skipfailures.",
+                "Use -e to restrict the extent, or -skipf/--skipfailures.",
                 file=sys.stderr,
                 flush=True,
             )

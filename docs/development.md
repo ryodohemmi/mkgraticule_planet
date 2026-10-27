@@ -13,7 +13,10 @@ The suite runs the package CLI, standalone Python script and standalone R script
 against small temporary datasets. It checks GeoPackage/SpatiaLite output,
 CRS and labels, shared defaults, major/minor classification, endpoint de-duplication, polar point
 layers, metre grids, saved counts, metadata opt-in, dry runs and preservation of
-existing output on failure. Python tests also cover partial write/replacement
+existing output on failure. Both 2D formats require an explicit nonblank CRS,
+including dry runs and format overrides; missing CRS tests check that no output
+directories are created and existing output is preserved. PLY tests run without
+`-srs`. Python tests also cover partial write/replacement
 failures, projection skips and standalone source parity. Shared Python/R PLY tests
 check edge/tube output, sampled surface points, offsets, batches and invalid options.
 R tests also simulate partial-write and replacement failures to verify that the
@@ -21,6 +24,8 @@ original file survives and staging directories are removed.
 Custom PROJ, WKT1/WKT2 strings and WKT/PRJ files are checked for CRS and coordinate
 accuracy. On Windows, a real file lock verifies output preservation and the retry
 message for all three CLIs; this platform-specific test is skipped on Linux.
+Shared tests compare all three CRS aliases, reject missing CRS values without
+tracebacks, and exercise both `-skipf` and `--skipfailures` with and without `-p`.
 
 R tests are skipped if `Rscript` is unavailable. To use R from a different conda
 environment, set `MKGRATICULE_R_COMMAND` to a JSON array of command arguments:

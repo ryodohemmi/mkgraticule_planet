@@ -8,6 +8,7 @@ identical binary output or identical geometries near projection-domain limits.
 | Capability | Python / GDAL | R / sf |
 | ---------- | ------------- | ------ |
 | GeoPackage / SpatiaLite | Yes | Yes |
+| 2D target CRS (`-s` / `-srs` / `--srs`) | Required; no default | Required; no default |
 | Degree-based graticules and projected metre grids | Yes | Yes |
 | Latitude/longitude labels, major/minor classification | Yes | Yes |
 | Full-360° endpoint de-duplication (`-nde`) | Yes | Yes |
@@ -18,7 +19,7 @@ identical binary output or identical geometries near projection-domain limits.
 | Optional generation records (`--metadata`) | SQLite table / PLY comments | SQLite table / PLY comments |
 | Preserve previous output if generation fails | Yes | Yes |
 | Counts read back from saved 2D output | Yes | Yes |
-| Skip failed features (`-s`) | Yes | Yes |
+| Skip failed features (`-skipf`) | Yes | Yes |
 | Partial reprojection (`-p`) | Yes | Yes |
 | Near-global, limited-domain projection guard | Yes | Yes |
 | Fitted 3D PLY, mesh ray casting, tubes | Yes | Yes |
@@ -31,7 +32,7 @@ identical binary output or identical geometries near projection-domain limits.
 | Main 2D dependencies | GDAL, numpy | sf, DBI, RSQLite |
 | Additional PLY dependencies | trimesh, rtree, optional embreex | Rvcg |
 
-R runs natively and does not invoke Python. R's `-s` drops empty transformed
+R runs natively and does not invoke Python. R's `-skipf` drops empty transformed
 features; GDAL/Python may retain some as empty geometries. Both report the actual
 saved counts, and `-p` explicitly enables partial reprojection. The backend-choice
 flag `--ray-slow` applies to Python's fallback; R accepts it for compatibility but

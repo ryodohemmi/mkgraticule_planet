@@ -1,5 +1,15 @@
 # Usage
 
+From v1.4.0, **`-s` / `-srs` / `--srs` is required for GeoPackage and SpatiaLite output**,
+including `--dry-run`; there is no default CRS. Missing or blank CRS values stop
+before creating directories or replacing output. To retain the previous Moon
+CRS, add `-srs IAU_2015:30100` to older commands. For other bodies, specify the
+intended CRS. PLY uses input mesh coordinates and does not require `-srs`.
+
+All three CRS aliases take a value. The old `-s` skip-failures flag has moved to
+`-skipf`; update old commands to use `-skipf` or the unchanged `--skipfailures`.
+The program never guesses the old meaning of `-s` from the presence of a value.
+
 ## Output safety and generation records
 
 Existing output files are replaced automatically, including any other layers in
@@ -23,7 +33,7 @@ An output with no non-empty grid lines is treated as a failure.
 
 ```sh
 mkgraticule --dry-run -g 10 10 -r 0.5 0.5 -srs IAU_2015:30100 moon.gpkg
-Rscript standalone/mkgraticule_planet.R --dry-run -g 10 10 moon.gpkg
+Rscript standalone/mkgraticule_planet.R --dry-run -g 10 10 -srs IAU_2015:30100 moon.gpkg
 ```
 
 Validates the options and CRS and shows the format, effective CRS, extent, units,
