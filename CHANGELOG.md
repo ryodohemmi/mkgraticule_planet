@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.4.0] - Unreleased
+## [1.4.0] - 2026-10-27
 
 ### Changed
 - **CLI compatibility change:** `-s` now takes a CRS value and is equivalent to `-srs` and `--srs`. The former `-s` skip-failures flag has moved to `-skipf`; replace old skip-failures uses with `-skipf` or the unchanged `--skipfailures`. Python and R do not guess the meaning from whether a value is supplied.
