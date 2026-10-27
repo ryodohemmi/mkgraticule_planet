@@ -58,7 +58,7 @@ Full documentation: https://mkgraticule-planet.readthedocs.io/
 * Multiple graticule label styles
 * Optional major/minor classification via `-m/--major` (`grid_type = major|minor`, otherwise NULL)
 * Safer handling for projected CRS with limited domains:
-  * abort on projected + near-global extent unless `-s/--skipfailures` is used
+  * abort on projected + near-global extent unless `-skipf/--skipfailures` is used
   * optional `-p/--partial-reprojection` for partial output near projection-domain limits
 * Override Lambert Conic Conformal projection parameters via `-lo` (latitude of origin), `-ls` (1st standard parallel), and `-ls2` (2nd standard parallel), allowing customization of the target CRS defaults
 * Optional endpoint de-duplication for 360° longitude spans: `-nde/--no-duplicate-endpoint`
@@ -239,10 +239,14 @@ For this reason, the 2D GIS outputs focus on formats that preserve CRS informati
 
 ## Usage
 
-From v1.4.0, **`-srs` / `--srs` is required for 2D output**, including
+From v1.4.0, **`-s` / `-srs` / `--srs` is required for 2D output**, including
 `--dry-run`. There is no default CRS. If an older Moon command omitted it, add
 `-srs IAU_2015:30100`; for other bodies, specify the intended CRS. PLY uses the
 input mesh coordinate system and does not require `-srs`.
+
+All three CRS options take a value and have the same meaning. The former `-s`
+skip-failures flag is now **`-skipf`**; replace old skip-failures uses of `-s`
+with `-skipf` or `--skipfailures`. The long option `--skipfailures` is unchanged.
 
 ### Preview and generation records
 
@@ -395,7 +399,7 @@ By default, `-g`, `-r`, `-m` and `-e` are in degrees. With `-u meters` (default:
 - Grid lines are placed at integer multiples of the step (anchored at 0) and span the extent.
 - Defaults are `-g 5000 5000` and `-r 100 100` (metres). Lines are sampled at the `-r` spacing; see [Output size check](#output-size-check) for the recommended range.
 - Output fields are `x`, `y` and `grid_type` (see [Output fields](#output-fields)); no companion point layer is written.
-- Not available for PLY output. `-nde` (and, in Python, `-s` and `-p`) have no effect.
+- Not available for PLY output. `-nde` (and, in Python, `-skipf` and `-p`) have no effect.
 
 #### Python / GDAL (conda)
 ```sh
@@ -460,11 +464,11 @@ If a near-global geographic extent is requested, reprojection may fail.
 
 - Default behavior: **abort** with a message suggesting to restrict the extent with `-e`
 - Recommended approach: restrict the geographic extent to the valid projection domain (e.g., `-e -180 -60 180 -90` for south polar views)
-- To force output anyway (skip features that fail reprojection): `-s/--skipfailures`
+- To force output anyway (skip features that fail reprojection): `-skipf/--skipfailures`
 - Optionally enable partial reprojection: `-p/--partial-reprojection`
 
 For projected + near-global requests, restricting the extent with `-e` is usually the best solution.  
-Combining `-s` with `-p` can sometimes produce partial output near projection domain limits.
+Combining `-skipf` with `-p` can sometimes produce partial output near projection domain limits.
 
 For projections with a singular center, the tool also writes a companion point layer (`point`).  
 This layer can contain:

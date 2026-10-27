@@ -7,11 +7,11 @@ If a near-global geographic extent is requested, reprojection may fail.
 
 - Default behavior: **abort** with a message suggesting to restrict the extent with `-e`
 - Recommended approach: restrict the geographic extent to the valid projection domain (e.g., `-e -180 -60 180 -90` for south polar views)
-- To force output anyway (skip features that fail reprojection): `-s/--skipfailures`
+- To force output anyway (skip features that fail reprojection): `-skipf/--skipfailures`
 - Optionally enable partial reprojection: `-p/--partial-reprojection`
 
 For projected + near-global requests, restricting the extent with `-e` is usually the best solution.  
-Combining `-s` with `-p` can sometimes produce partial output near projection domain limits.
+Combining `-skipf` with `-p` can sometimes produce partial output near projection domain limits.
 
 For projections with a singular center, the tool also writes a companion point layer (`point`).  
 This layer can contain:
@@ -39,7 +39,7 @@ mkgraticule ... -nde
 
 ## Planetary CRS
 
-The `-srs` option accepts any coordinate reference system supported by GDAL / PROJ.
+The `-srs` option (also `-s` and `--srs`) accepts any coordinate reference system supported by GDAL / PROJ.
 It is required for 2D output (including `--dry-run`) and has no default. PLY uses
 input mesh coordinates and does not require this option.
 In both Python and R, this includes authority codes, custom PROJ strings, WKT

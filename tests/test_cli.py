@@ -46,25 +46,68 @@ class SharedCLI:
         return self.run_cli("-g", 5, 5, "-r", 1, 1, "-e", 0, 10, 10, 0,
                             "-srs", "IAU_2015:30100", *extra, output, success=success)
 
+    def test_srs_aliases(self):
+        snapshots = []
+        for index, alias in enumerate(("-s", "-srs", "--srs")):
+            with self.subTest(alias=alias):
+                output = self.work / f"alias{index}.gpkg"
+                log = self.grid(output, alias, "IAU_2015:49900", "--metadata")
+                self.assertEqual(self.assert_counts(output, log), (6, 0))
+                with closing(sqlite3.connect(output)) as con:
+                    record = dict(con.execute("SELECT key, value FROM mkgraticule_metadata"))
+                self.assertEqual(record["srs"], "IAU_2015:49900")
+                self.assertEqual(record["skipfailures"], "false")
+                ds = ogr.Open(str(output))
+                layer = ds.GetLayerByName("grid")
+                snapshots.append([(f.GetField("lat"), f.GetField("lon"),
+                                   bytes(f.GetGeometryRef().ExportToWkb())) for f in layer])
+                ds = None
+        self.assertEqual(len(snapshots), 3)
+        self.assertEqual(snapshots[0], snapshots[1])
+        self.assertEqual(snapshots[1], snapshots[2])
+
+    def test_srs_alias_requires_value(self):
+        output = self.work / "existing.gpkg"
+        for flags in (("-s",), ("-srs",), ("--srs",), ("-s", "-p"),
+                      ("-s", "-srs", "IAU_2015:30100"), ("-s", "--skipfailures")):
+            with self.subTest(flags=flags):
+                output.write_bytes(b"original")
+                log = self.run_cli("-g", 5, 5, "-r", 1, 1, "-e", 0, 10, 10, 0,
+                                   output, *flags, success=False)
+                self.assertRegex(log, "expected one argument|Missing CRS value")
+                self.assertNotIn("Traceback", log)
+                self.assertNotIn("Calls:", log)
+                self.assertEqual(output.read_bytes(), b"original")
+                self.assertFalse(list(self.work.glob(".mkgraticule-*")))
+
+        # The old "-s output.gpkg" spelling now lacks an output argument;
+        # never guess that -s meant skip-failures or touch that file.
+        log = self.run_cli("-s", output, success=False)
+        self.assertIn("required", log)
+        self.assertNotIn("Traceback", log)
+        self.assertNotIn("Calls:", log)
+        self.assertEqual(output.read_bytes(), b"original")
+
     def test_srs_required_for_2d_output(self):
         cases = (("grid.gpkg", ()), ("grid.sqlite", ()), ("grid", ()),
                  ("grid.ply", ("-f", "gpkg")),
                  ("grid.gpkg", ("-f", "spatialite")),
                  ("grid.gpkg", ("-u", "meters")),
-                 ("grid.gpkg", ("-srs", "")), ("grid.gpkg", ("--srs", " ")))
+                 ("grid.gpkg", ("-srs", "")), ("grid.gpkg", ("--srs", " ")),
+                 ("grid.gpkg", ("-s", " ")))
         for index, (name, flags) in enumerate(cases):
             for dry_run in (False, True):
                 with self.subTest(flags=flags, name=name, dry_run=dry_run):
                     output = self.work / f"missing{index}-{dry_run}" / name
                     log = self.run_cli("-g", 5, 5, "-r", 1, 1, "-e", 0, 10, 10, 0,
                                        *flags, *(["--dry-run"] if dry_run else []), output, success=False)
-                    self.assertIn("-srs/--srs is required for 2D output", log)
+                    self.assertIn("-s/-srs/--srs is required for 2D output", log)
                     self.assertFalse(output.parent.exists())
         output = self.work / "existing.gpkg"
         output.write_bytes(b"original")
         for flags in ((), ("--dry-run",)):
             log = self.run_cli(*flags, output, success=False)
-            self.assertIn("-srs/--srs is required for 2D output", log)
+            self.assertIn("-s/-srs/--srs is required for 2D output", log)
             self.assertEqual(output.read_bytes(), b"original")
         self.assertFalse(list(self.work.glob(".mkgraticule-*")))
 
@@ -148,7 +191,8 @@ class SharedCLI:
         self.run_cli(*options, output, success=False)
         self.assertEqual(output.read_bytes(), b"original")
         nonempty_counts = []
-        for flags in (("-s",), ("-s", "-p")):
+        for flags in (("-skipf",), ("-skipf", "-p"),
+                      ("--skipfailures",), ("--skipfailures", "-p")):
             log = self.run_cli(*options, *flags, "--metadata", output)
             self.assert_counts(output, log)
             ds = ogr.Open(str(output))
@@ -163,6 +207,7 @@ class SharedCLI:
             self.assertEqual(record["skipfailures"], "true")
             self.assertEqual(record["partial_reprojection"], "true" if "-p" in flags else "false")
         self.assertGreater(nonempty_counts[1], nonempty_counts[0])
+        self.assertEqual(nonempty_counts[:2], nonempty_counts[2:])
 
     def test_metadata_effective_projection_parameters(self):
         output = self.work / "grid.gpkg"
@@ -200,7 +245,8 @@ class SharedCLI:
         for index, (name, srs_input, reference) in enumerate(cases):
             with self.subTest(input=name):
                 output = self.work / f"grid{index}.gpkg"
-                log = self.grid(output, "-srs", srs_input, "--metadata")
+                alias = ("-s", "-srs", "--srs")[index % 3]
+                log = self.grid(output, alias, srs_input, "--metadata")
                 self.assertEqual(self.assert_counts(output, log), (6, 1))
                 ds = ogr.Open(str(output))
                 layer = ds.GetLayerByName("grid")
@@ -287,7 +333,9 @@ class SharedCLI:
     def test_meter_grid_and_empty_extent_preserves_output(self):
         output = self.work / "grid.gpkg"
         log = self.run_cli("-u", "meters", "-srs", "IAU_2015:30135", "-e", -100, 100, 100, -100,
-                           "-g", 100, 100, "-r", 50, 50, "--metadata", output)
+                           "-g", 100, 100, "-r", 50, 50, "-skipf", "-p", "--metadata", output)
+        self.assertIn("-skipf", log)
+        self.assertIn("ignored with -u meters", log)
         self.assertEqual(self.assert_counts(output, log, meters=True), (6, 0))
         before = output.read_bytes()
         self.run_cli("-u", "meters", "-srs", "IAU_2015:30135", "-e", 1, 2, 2, 1,
@@ -398,7 +446,7 @@ class PythonSafety(unittest.TestCase):
 
     def test_skipped_reprojection_counts(self):
         output = self.work / "grid.gpkg"
-        for flags in (("-s",), ("-s", "-p")):
+        for flags in (("-skipf",), ("-skipf", "-p")):
             log = self.run_cli("-srs", "+proj=ortho +lat_0=0 +lon_0=0 +R=1737400 +units=m +no_defs",
                                "-g", 60, 40, "-r", 10, 10, "-e", -180, 80, 180, -80, *flags, output)
             self.assert_counts(output, log)

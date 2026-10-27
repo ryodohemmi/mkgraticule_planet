@@ -24,6 +24,8 @@ original file survives and staging directories are removed.
 Custom PROJ, WKT1/WKT2 strings and WKT/PRJ files are checked for CRS and coordinate
 accuracy. On Windows, a real file lock verifies output preservation and the retry
 message for all three CLIs; this platform-specific test is skipped on Linux.
+Shared tests compare all three CRS aliases, reject missing CRS values without
+tracebacks, and exercise both `-skipf` and `--skipfailures` with and without `-p`.
 
 R tests are skipped if `Rscript` is unavailable. To use R from a different conda
 environment, set `MKGRATICULE_R_COMMAND` to a JSON array of command arguments:

@@ -42,7 +42,7 @@ usage <- function(status = 0) {
     "      Validate and show the generation plan without writing files or asking for confirmation.\n",
     "  --metadata\n",
     "      Record generation settings in a SQLite table or PLY comments.\n",
-    "  -srs, --srs SRS\n",
+    "  -s, -srs, --srs SRS\n",
     "      Set target spatial reference (IAU/EPSG code, PROJ/WKT string, or .wkt/.prj file).\n",
     "      Required for 2D output; no default. Not required for PLY.\n",
     "      See https://spatialreference.org/\n",
@@ -80,7 +80,7 @@ usage <- function(status = 0) {
     "  -q, --qview\n",
     "      Quick View: after writing the output, open a window showing the whole grid\n",
     "      (close the window to finish).\n",
-    "  -s, --skipfailures\n",
+    "  -skipf, --skipfailures\n",
     "      Skip features that fail reprojection.\n",
     "  -p, --partial-reprojection\n",
     "      Allow partial reprojection near projection-domain limits.\n",
@@ -147,7 +147,7 @@ parse_args <- function(args) {
       next
     }
 
-    flags <- c("-s" = "skipfailures", "--skipfailures" = "skipfailures",
+    flags <- c("-skipf" = "skipfailures", "--skipfailures" = "skipfailures",
                "-p" = "partial-reprojection", "--partial-reprojection" = "partial-reprojection",
                "-rslow" = "ray-slow", "--ray-slow" = "ray-slow", "--allow-slow-raycast" = "ray-slow")
     if (key %in% names(flags)) {
@@ -248,7 +248,10 @@ parse_args <- function(args) {
       next
     }
 
-    if (key %in% c("-srs", "--srs")) {
+    if (key %in% c("-s", "-srs", "--srs")) {
+      if (i == length(args) || startsWith(args[i + 1L], "-")) {
+        stop(sprintf("Missing CRS value for %s; specify a CRS code, PROJ/WKT string, or .wkt/.prj file.", key), call. = FALSE)
+      }
       vals <- expect_n_values(args, i, 1, key)
       res[["proj-crs"]] <- vals[1]
       i <- i + 2
@@ -321,7 +324,7 @@ parse_args <- function(args) {
   }
 
   if (is.null(res[["outfile"]])) {
-    stop("Missing required argument: outfile")
+    stop("Missing required argument: outfile", call. = FALSE)
   }
 
   res
@@ -1470,7 +1473,7 @@ reproject_grid <- function(grid, crs, skip, partial) {
     st_set_geometry(grid, st_sfc(geoms, crs = crs))
   })
   failed <- st_is_empty(transformed)
-  if (any(failed) && !skip) stop("Some grid lines failed reprojection. Restrict -e or use -s/--skipfailures, optionally with -p/--partial-reprojection.")
+  if (any(failed) && !skip) stop("Some grid lines failed reprojection. Restrict -e or use -skipf/--skipfailures, optionally with -p/--partial-reprojection.")
   if (any(failed)) message(sprintf("WARNING: skipped %d grid lines that failed reprojection.", sum(failed)))
   transformed[!failed, , drop = FALSE]
 }
@@ -1485,7 +1488,7 @@ out_info  <- resolve_output_format(
 )
 output    <- out_info$outfile
 if (!identical(out_info$format, "ply") && (is.null(proj_crs) || !nzchar(trimws(proj_crs)))) {
-  stop("-srs/--srs is required for 2D output (GeoPackage/SpatiaLite); specify a CRS code, PROJ/WKT string, or .wkt/.prj file.")
+  stop("-s/-srs/--srs is required for 2D output (GeoPackage/SpatiaLite); specify a CRS code, PROJ/WKT string, or .wkt/.prj file (e.g. -srs IAU_2015:30100 for Moon).")
 }
 is_gpkg   <- out_info$is_gpkg
 layer     <- get_optional(opts, "layer", NULL)
@@ -1613,7 +1616,7 @@ method <- regmatches(crs_proj$wkt, regexpr('METHOD\\["[^"]+', crs_proj$wkt))
 limited <- length(method) > 0L && grepl("stereographic|orthographic|gnomonic|vertical perspective|azimuthal equidistant", method, ignore.case = TRUE)
 global_like <- lon_min <= -170 && lon_max >= 170 && lat_min <= -80 && lat_max >= 80
 if (!is_meters && projected && limited && global_like) {
-  if (!skip) stop("Projected CRS with near-global extent detected. Restrict -e or use -s/--skipfailures, optionally with -p/--partial-reprojection.")
+  if (!skip) stop("Projected CRS with near-global extent detected. Restrict -e or use -skipf/--skipfailures, optionally with -p/--partial-reprojection.")
   message("WARNING: near-global extent in a limited-domain projection; some features may be missing.")
 }
 if (!isTRUE(opts[["dry-run"]])) confirm_output_size(
@@ -1709,7 +1712,7 @@ if (identical(units, "meters")) {
   if (isTRUE(get_optional(opts, "no-duplicate-endpoint", FALSE))) {
     message("NOTE: -nde ignored with -u meters (no reprojection is performed).")
   }
-  if (skip || partial) message("NOTE: -s/-p ignored with -u meters (no reprojection is performed).")
+  if (skip || partial) message("NOTE: -skipf/-p ignored with -u meters (no reprojection is performed).")
 
   xs <- meter_ticks(lon_min, lon_max, mer_step)
   ys <- meter_ticks(lat_min, lat_max, par_step)

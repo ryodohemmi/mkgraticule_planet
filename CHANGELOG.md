@@ -5,7 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [1.4.0] - Unreleased
 
 ### Changed
-- **CLI compatibility change:** `-srs` / `--srs` is now required for all 2D GeoPackage and SpatiaLite output, including `--dry-run`. The previous implicit Moon CRS (`IAU_2015:30100`) has been removed in Python and R. Existing Moon commands that omitted it must add `-srs IAU_2015:30100`; other bodies must specify their intended CRS. Missing or blank values stop before output creation or replacement. PLY continues to use input mesh coordinates and does not require `-srs`.
+- **CLI compatibility change:** `-s` now takes a CRS value and is equivalent to `-srs` and `--srs`. The former `-s` skip-failures flag has moved to `-skipf`; replace old skip-failures uses with `-skipf` or the unchanged `--skipfailures`. Python and R do not guess the meaning from whether a value is supplied.
+- **CLI compatibility change:** `-s` / `-srs` / `--srs` is now required for all 2D GeoPackage and SpatiaLite output, including `--dry-run`. The previous implicit Moon CRS (`IAU_2015:30100`) has been removed in Python and R. Existing Moon commands that omitted it must add `-srs IAU_2015:30100`; other bodies must specify their intended CRS. Missing or blank values stop before output creation or replacement. PLY continues to use input mesh coordinates and does not require `-srs`.
 
 ## [1.3.2] - 2026-10-25
 

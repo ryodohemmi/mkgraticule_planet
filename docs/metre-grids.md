@@ -13,7 +13,7 @@ By default, `-g`, `-r`, `-m` and `-e` are in degrees. With `-u meters` (default:
 - Defaults are `-g 5000 5000` and `-r 100 100` (metres). Lines are sampled at the `-r` spacing. Keep `10 <= res <= step/2`; smaller values, or an estimated output above 100 MB, trigger the [output size check](cli-reference.md#output-size-check).
 - `-m` works as in degree mode: lines at multiples of the major interval get `grid_type = major`, the others `minor`. The major interval must be a natural-number multiple of the grid step.
 - Output fields are `x`, `y` and `grid_type` (see [Output fields](output-fields.md)); the latitude/longitude label fields are not written, and no companion point layer is created.
-- Not available for PLY output. `-nde` (and, in Python, `-s` and `-p`) have no effect because nothing is reprojected.
+- Not available for PLY output. `-nde` (and, in Python, `-skipf` and `-p`) have no effect because nothing is reprojected.
 - `-lo`, `-ls` and `-ls2` still apply to the output CRS.
 
 ## Examples

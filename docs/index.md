@@ -40,7 +40,7 @@ See [Installation](installation.md) and [Usage](usage.md) for details.
 * Multiple graticule label styles
 * Optional major/minor classification via `-m/--major` (`grid_type = major|minor`, otherwise NULL)
 * Safer handling for projected CRS with limited domains:
-    * abort on projected + near-global extent unless `-s/--skipfailures` is used
+    * abort on projected + near-global extent unless `-skipf/--skipfailures` is used
     * optional `-p/--partial-reprojection` for partial output near projection-domain limits
 * Override Lambert Conic Conformal projection parameters via `-lo` (latitude of origin), `-ls` (1st standard parallel), and `-ls2` (2nd standard parallel), allowing customization of the target CRS defaults
 * Optional endpoint de-duplication for 360° longitude spans: `-nde/--no-duplicate-endpoint`
