@@ -1,5 +1,8 @@
 # mkgraticule_planet
-[![conda-forge](https://img.shields.io/conda/vn/conda-forge/mkgraticule-planet?label=conda-forge)](https://anaconda.org/conda-forge/mkgraticule-planet)  
+[![conda-forge](https://img.shields.io/conda/vn/conda-forge/mkgraticule-planet?label=conda-forge)](https://anaconda.org/conda-forge/mkgraticule-planet)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18864189.svg)](https://doi.org/10.5281/zenodo.18864189)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+
 Create planetary-scale graticules with multi-format labels for any **GDAL/PROJ-supported CRS** — exported as **GeoPackage**, **SpatiaLite**, or fitted **3D PLY**.
 
 A small CLI utility for generating latitude/longitude grids for planetary bodies using **IAU 2015 planetary coordinate systems**.
